@@ -1,5 +1,3 @@
-use std::num::ParseFloatError;
-
 #[derive(Debug, PartialEq)]
 enum Token {
     Null,
@@ -12,9 +10,8 @@ enum Token {
 #[derive(Debug, PartialEq)]
 enum Error {
     ExpectedLiteral(String, String),
-    InvalidCharacter(String, String),
     InvalidString(String, String),
-    InvalidNumber(String, ParseFloatError),
+    InvalidNumber(String),
 }
 
 impl Token {
@@ -59,7 +56,7 @@ impl Token {
     fn tokenize_number(possible_string: &str) -> Result<Token, Error> {
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(e) => Err(Error::InvalidNumber(possible_string.to_string(), e)),
+            Err(e) => Err(Error::InvalidNumber(possible_string.to_string())),
         }
     }
 
@@ -67,7 +64,7 @@ impl Token {
         if token.len() == 0 {
             return Err(Error::ExpectedLiteral(
                 token.to_string(),
-                String::from("Nothing to parse"),
+                "Nothing to parse".to_string(),
             ));
         }
 
@@ -84,7 +81,7 @@ impl Token {
             ('0'..='9', _) => Token::tokenize_number(token),
             _ => Err(Error::ExpectedLiteral(
                 token.to_string(),
-                String::from("Expected a JSON object, array, or literal"),
+                "Expected a JSON object, array, or literal".to_string(),
             )),
         }
     }
@@ -132,14 +129,14 @@ mod tests {
     mod tokenize_into_strings {
         use super::super::*;
         #[test]
-        fn space_separated_garbage_should_be_separated() {
+        fn fail_space_separated_garbage() {
             let json = "this is garbage";
             assert_eq!(vec!["this", "is", "garbage"], tokenize_into_strings(json));
         }
 
         #[ignore]
         #[test]
-        fn separate_adjacent_strings() {
+        fn fail_on_multiple_quotes_in_one_token() {
             let json = r#"
                 "d"fds"potato"
         "#;
@@ -148,13 +145,13 @@ mod tests {
         }
 
         #[test]
-        fn space_in_string() {
+        fn pass_space_in_string() {
             let json = "\"fjdsoif fds\"";
             assert_eq!(vec!["\"fjdsoif fds\""], tokenize_into_strings(json));
         }
 
         #[test]
-        fn separate_on_punctuation() {
+        fn should_separate_on_punctuation() {
             let json = r#"{"age":30,"is_student":[false]}"#;
             let expected = vec![
                 "{",
@@ -177,7 +174,7 @@ mod tests {
         use super::super::*;
 
         #[test]
-        fn space_separated_garbage_should_be_separated() {
+        fn fail_space_separated_garbage() {
             let expected: Vec<Result<Token, Error>> = vec![
                 Err(Error::ExpectedLiteral(
                     "this".to_string(),
@@ -192,22 +189,37 @@ mod tests {
             assert_eq!(expected, Token::tokenize_tokens(json));
         }
 
-        #[ignore]
         #[test]
-        fn separate_adjacent_strings() {
+        fn fail_on_multiple_quotes_in_one_token() {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec![
-                Ok(Token::String("d".to_string())),
-                Ok(Token::String("fds".to_string())),
-                Ok(Token::String("potato".to_string())),
-            ];
+            let expected = vec![Err(Error::InvalidString(
+                "\"d\"fds\"potato\"".to_string(),
+                "Invalid String".to_string(),
+            ))];
             assert_eq!(expected, Token::tokenize_tokens(json));
         }
 
         #[test]
-        fn space_in_string() {
+        fn fail_on_unmatched_quotation() {
+            let json = r#""fds"#;
+            let expected = vec![Err(Error::InvalidString(
+                "\"fds".to_string(),
+                "String has unmatched quotation".to_string(),
+            ))];
+            assert_eq!(expected, Token::tokenize_tokens(json));
+        }
+
+        #[test]
+        fn fail_on_invalid_number() {
+            let json = r#"11.3de2"#;
+            let expected = vec![Err(Error::InvalidNumber("11.3de2".to_string()))];
+            assert_eq!(expected, Token::tokenize_tokens(json));
+        }
+
+        #[test]
+        fn pass_space_in_string() {
             let json = "\"fjdsoif fds\"";
             assert_eq!(
                 vec![Ok(Token::String("fjdsoif fds".to_string()))],
@@ -216,7 +228,7 @@ mod tests {
         }
 
         #[test]
-        fn separate_on_punctuation() {
+        fn should_separate_on_punctuation() {
             let json = r#"{"age":30,"is_student":[false]}"#;
             let expected = vec![
                 Ok(Token::Punctuation('{')),
