@@ -11,10 +11,10 @@ enum Token {
 
 #[derive(Debug, PartialEq)]
 enum Error {
-    ExpectedLiteral(String),
-    InvalidCharacter(String),
-    InvalidString(String),
-    InvalidNumber(ParseFloatError),
+    ExpectedLiteral(String, String),
+    InvalidCharacter(String, String),
+    InvalidString(String, String),
+    InvalidNumber(String, ParseFloatError),
 }
 
 impl Token {
@@ -25,7 +25,10 @@ impl Token {
 
     fn tokenize_string(possible_string: &str) -> Result<Token, Error> {
         if possible_string.len() == 0 {
-            return Err(Error::ExpectedLiteral(String::from("Nothing to parse")));
+            return Err(Error::ExpectedLiteral(
+                possible_string.to_string(),
+                String::from("Nothing to parse"),
+            ));
         }
 
         let num_quotations = possible_string
@@ -33,15 +36,19 @@ impl Token {
             .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
 
         if num_quotations % 2 == 1 {
-            return Err(Error::InvalidString(String::from(
-                "String has unmatched quotation",
-            )));
+            return Err(Error::InvalidString(
+                possible_string.to_string(),
+                String::from("String has unmatched quotation"),
+            ));
         }
 
         let first = possible_string.chars().nth(0);
         let last = possible_string.chars().nth(possible_string.len() - 1);
         if num_quotations != 2 || first.unwrap() != '"' || last.unwrap() != '"' {
-            Err(Error::InvalidString(String::from("Invalid String")))
+            Err(Error::InvalidString(
+                possible_string.to_string(),
+                String::from("Invalid String"),
+            ))
         } else {
             Ok(Token::String(String::from(possible_string)))
         }
@@ -50,13 +57,16 @@ impl Token {
     fn tokenize_number(possible_string: &str) -> Result<Token, Error> {
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(e) => Err(Error::InvalidNumber(e)),
+            Err(e) => Err(Error::InvalidNumber(possible_string.to_string(), e)),
         }
     }
 
     fn tokenize_token(token: &str) -> Result<Token, Error> {
         if token.len() == 0 {
-            return Err(Error::ExpectedLiteral(String::from("Nothing to parse")));
+            return Err(Error::ExpectedLiteral(
+                token.to_string(),
+                String::from("Nothing to parse"),
+            ));
         }
 
         let c = token.chars().next().unwrap();
@@ -70,9 +80,10 @@ impl Token {
             ('t', "true") => Ok(Token::Bool(true)),
             ('"', _) => Token::tokenize_string(token),
             ('0'..='9', _) => Token::tokenize_number(token),
-            _ => Err(Error::ExpectedLiteral(String::from(
-                "Expected a JSON object, array, or literal",
-            ))),
+            _ => Err(Error::ExpectedLiteral(
+                token.to_string(),
+                String::from("Expected a JSON object, array, or literal"),
+            )),
         }
     }
 
@@ -117,59 +128,66 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn space_separated_garbage_should_be_separated() {
-        let json = "this is garbage";
-        assert_eq!(vec!["this", "is", "garbage"], tokenize_into_strings(json));
-    }
-
-    #[ignore]
-    #[test]
-    fn separate_adjacent_strings() {
-        let json = r#"
-                "d"fds"potato"
-        "#;
-        let expected = vec!["\"d\"", "fds", "\"potato\""];
-        assert_eq!(expected, tokenize_into_strings(json));
-    }
-
-    #[test]
-    fn space_in_string() {
-        let json = "\"fjdsoif fds\"";
-        assert_eq!(vec!["\"fjdsoif fds\""], tokenize_into_strings(json));
-    }
-
-    #[test]
-    fn separate_on_punctuation() {
-        let json = r#"{"age":30,"is_student":[false]}"#;
-        let expected = vec![
-            "{",
-            "\"age\"",
-            ":",
-            "30",
-            ",",
-            "\"is_student\"",
-            ":",
-            "[",
-            "false",
-            "]",
-            "}",
-        ];
-        assert_eq!(expected, tokenize_into_strings(json));
-    }
-
     // #[test]
     // fn space_separated_garbage_should_be_separated() {
     //     let json = "this is garbage";
-    //     assert_eq!(
-    //         vec![
-    //             Token::String(String::from("this")),
-    //             Token::String(String::from("is")),
-    //             Token::String(String::from("garbage"))
-    //         ],
-    //         Token::tokenize_tokens(json)
-    //     );
+    //     assert_eq!(vec!["this", "is", "garbage"], tokenize_into_strings(json));
     // }
+
+    // #[ignore]
+    // #[test]
+    // fn separate_adjacent_strings() {
+    //     let json = r#"
+    //             "d"fds"potato"
+    //     "#;
+    //     let expected = vec!["\"d\"", "fds", "\"potato\""];
+    //     assert_eq!(expected, tokenize_into_strings(json));
+    // }
+
+    // #[test]
+    // fn space_in_string() {
+    //     let json = "\"fjdsoif fds\"";
+    //     assert_eq!(vec!["\"fjdsoif fds\""], tokenize_into_strings(json));
+    // }
+
+    // #[test]
+    // fn separate_on_punctuation() {
+    //     let json = r#"{"age":30,"is_student":[false]}"#;
+    //     let expected = vec![
+    //         "{",
+    //         "\"age\"",
+    //         ":",
+    //         "30",
+    //         ",",
+    //         "\"is_student\"",
+    //         ":",
+    //         "[",
+    //         "false",
+    //         "]",
+    //         "}",
+    //     ];
+    //     assert_eq!(expected, tokenize_into_strings(json));
+    // }
+
+    #[test]
+    fn space_separated_garbage_should_be_separated() {
+        let expected: Vec<Result<Token, Error>> = vec![
+            Err(Error::ExpectedLiteral(
+                "this".to_string(),
+                "Expected a JSON object, array, or literal".to_string(),
+            )),
+            Err(Error::ExpectedLiteral(
+                "is".to_string(),
+                "Expected a JSON object, array, or literal".to_string(),
+            )),
+            Err(Error::ExpectedLiteral(
+                "garbage".to_string(),
+                "Expected a JSON object, array, or literal".to_string(),
+            )),
+        ];
+        let json = "this is garbage";
+        assert_eq!(expected, Token::tokenize_tokens(json));
+    }
 
     // #[test]
     // fn separate_adjacent_strings() {

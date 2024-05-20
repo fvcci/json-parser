@@ -1,4 +1,4 @@
-mod lexical_tokenization;
+mod lexical;
 mod parser;
 
 fn main() {
