@@ -10,7 +10,7 @@ enum Token {
 }
 
 #[derive(Debug, PartialEq)]
-enum LexicalError {
+enum Error {
     ExpectedLiteral(String),
     InvalidCharacter(String),
     InvalidString(String),
@@ -23,11 +23,9 @@ impl Token {
         PUNCTUATIONS.contains(&c)
     }
 
-    fn tokenize_string(possible_string: &str) -> Result<Token, LexicalError> {
+    fn tokenize_string(possible_string: &str) -> Result<Token, Error> {
         if possible_string.len() == 0 {
-            return Err(LexicalError::ExpectedLiteral(String::from(
-                "Nothing to parse.",
-            )));
+            return Err(Error::ExpectedLiteral(String::from("Nothing to parse")));
         }
 
         let num_quotations = possible_string
@@ -35,7 +33,7 @@ impl Token {
             .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
 
         if num_quotations % 2 == 1 {
-            return Err(LexicalError::InvalidString(String::from(
+            return Err(Error::InvalidString(String::from(
                 "String has unmatched quotation",
             )));
         }
@@ -43,26 +41,22 @@ impl Token {
         let first = possible_string.chars().nth(0);
         let last = possible_string.chars().nth(possible_string.len() - 1);
         if num_quotations != 2 || first.unwrap() != '"' || last.unwrap() != '"' {
-            Err(LexicalError::InvalidString(String::from(
-                "String quotations are invalid",
-            )))
+            Err(Error::InvalidString(String::from("Invalid String")))
         } else {
             Ok(Token::String(String::from(possible_string)))
         }
     }
 
-    fn tokenize_number(possible_string: &str) -> Result<Token, LexicalError> {
+    fn tokenize_number(possible_string: &str) -> Result<Token, Error> {
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(e) => Err(LexicalError::InvalidNumber(e)),
+            Err(e) => Err(Error::InvalidNumber(e)),
         }
     }
 
-    fn tokenize_token(token: &str) -> Result<Token, LexicalError> {
+    fn tokenize_token(token: &str) -> Result<Token, Error> {
         if token.len() == 0 {
-            return Err(LexicalError::ExpectedLiteral(String::from(
-                "Nothing to parse.",
-            )));
+            return Err(Error::ExpectedLiteral(String::from("Nothing to parse")));
         }
 
         let c = token.chars().next().unwrap();
@@ -76,16 +70,16 @@ impl Token {
             ('t', "true") => Ok(Token::Bool(true)),
             ('"', _) => Token::tokenize_string(token),
             ('0'..='9', _) => Token::tokenize_number(token),
-            _ => Err(LexicalError::ExpectedLiteral(String::from(
-                "Expected a JSON object, array, or literal.",
+            _ => Err(Error::ExpectedLiteral(String::from(
+                "Expected a JSON object, array, or literal",
             ))),
         }
     }
 
-    fn tokenize_tokens(possible_json: &str) -> Vec<Result<Token, LexicalError>> {
+    fn tokenize_tokens(possible_json: &str) -> Vec<Result<Token, Error>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
-        let mut tokens = Vec::<Result<Token, LexicalError>>::new();
+        let mut tokens = Vec::<Result<Token, Error>>::new();
         for token in token_strings {
             tokens.push(Token::tokenize_token(&token));
         }
