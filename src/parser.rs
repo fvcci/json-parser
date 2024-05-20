@@ -1,9 +1,5 @@
-use crate::lexical::{Error, Token};
+use crate::lexical;
 use std::collections::HashMap;
-
-pub fn parse(possible_json: &str) -> Result<Value, Error> {
-    Ok(Value::Null)
-}
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -13,6 +9,10 @@ pub enum Value {
     String(String),
     Array(Vec<Value>),
     Object(HashMap<String, Value>),
+}
+
+pub fn parse(possible_json: &str) -> Result<Value, lexical::Error> {
+    
 }
 
 #[cfg(test)]

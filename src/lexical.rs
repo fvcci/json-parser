@@ -20,13 +20,8 @@ impl Token {
         PUNCTUATIONS.contains(&c)
     }
 
-    fn tokenize_string(possible_string: &str) -> Result<Token, Error> {
-        if possible_string.len() == 0 {
-            return Err(Error::ExpectedLiteral(
-                possible_string.to_string(),
-                String::from("Nothing to parse"),
-            ));
-        }
+    fn try_from_string(possible_string: &str) -> Result<Token, Error> {
+        assert!(possible_string.len() == 0);
 
         let num_quotations = possible_string
             .chars()
@@ -53,14 +48,15 @@ impl Token {
         }
     }
 
-    fn tokenize_number(possible_string: &str) -> Result<Token, Error> {
+    fn try_from_number(possible_string: &str) -> Result<Token, Error> {
+        assert!(possible_string.len() == 0);
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
             Err(_) => Err(Error::InvalidNumber(possible_string.to_string())),
         }
     }
 
-    fn tokenize_token(token: &str) -> Result<Token, Error> {
+    fn try_from_token(token: &str) -> Result<Token, Error> {
         if token.len() == 0 {
             return Err(Error::ExpectedLiteral(
                 token.to_string(),
@@ -77,8 +73,8 @@ impl Token {
             ('n', "null") => Ok(Token::Null),
             ('f', "false") => Ok(Token::Bool(false)),
             ('t', "true") => Ok(Token::Bool(true)),
-            ('"', _) => Token::tokenize_string(token),
-            ('0'..='9', _) => Token::tokenize_number(token),
+            ('"', _) => Token::try_from_string(token),
+            ('0'..='9', _) => Token::try_from_number(token),
             _ => Err(Error::ExpectedLiteral(
                 token.to_string(),
                 "Expected a JSON object, array, or literal".to_string(),
@@ -86,12 +82,12 @@ impl Token {
         }
     }
 
-    pub fn tokenize_tokens(possible_json: &str) -> Vec<Result<Token, Error>> {
+    pub fn try_from_json(possible_json: &str) -> Vec<Result<Token, Error>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
         let mut tokens = Vec::<Result<Token, Error>>::new();
         for token in token_strings {
-            tokens.push(Token::tokenize_token(&token));
+            tokens.push(Token::try_from_token(&token));
         }
 
         tokens
@@ -185,7 +181,7 @@ mod tests {
                 )),
             ];
             let json = "this garbage";
-            assert_eq!(expected, Token::tokenize_tokens(json));
+            assert_eq!(expected, Token::try_from_json(json));
         }
 
         #[test]
@@ -197,7 +193,7 @@ mod tests {
                 "\"d\"fds\"potato\"".to_string(),
                 "Invalid String".to_string(),
             ))];
-            assert_eq!(expected, Token::tokenize_tokens(json));
+            assert_eq!(expected, Token::try_from_json(json));
         }
 
         #[test]
@@ -207,14 +203,14 @@ mod tests {
                 "\"fds".to_string(),
                 "String has unmatched quotation".to_string(),
             ))];
-            assert_eq!(expected, Token::tokenize_tokens(json));
+            assert_eq!(expected, Token::try_from_json(json));
         }
 
         #[test]
         fn fail_on_invalid_number() {
             let json = r#"11.3de2"#;
             let expected = vec![Err(Error::InvalidNumber("11.3de2".to_string()))];
-            assert_eq!(expected, Token::tokenize_tokens(json));
+            assert_eq!(expected, Token::try_from_json(json));
         }
 
         #[test]
@@ -222,7 +218,7 @@ mod tests {
             let json = "\"fjdsoif fds\"";
             assert_eq!(
                 vec![Ok(Token::String("fjdsoif fds".to_string()))],
-                Token::tokenize_tokens(json)
+                Token::try_from_json(json)
             );
         }
 
@@ -242,7 +238,7 @@ mod tests {
                 Ok(Token::Punctuation(']')),
                 Ok(Token::Punctuation('}')),
             ];
-            assert_eq!(expected, Token::tokenize_tokens(json));
+            assert_eq!(expected, Token::try_from_json(json));
         }
     }
 }
