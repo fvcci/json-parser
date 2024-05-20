@@ -1,12 +1,8 @@
+use crate::lexical::{Error, Token};
 use std::collections::HashMap;
 
 pub fn parse(possible_json: &str) -> Result<Value, Error> {
     Ok(Value::Null)
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    InvalidLiteral,
 }
 
 #[derive(Debug, PartialEq)]

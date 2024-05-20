@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq)]
-enum Token {
+pub enum Token {
     Null,
     Bool(bool),
     String(String),
@@ -8,7 +8,7 @@ enum Token {
 }
 
 #[derive(Debug, PartialEq)]
-enum Error {
+pub enum Error {
     ExpectedLiteral(String, String),
     InvalidString(String, String),
     InvalidNumber(String),
@@ -56,7 +56,7 @@ impl Token {
     fn tokenize_number(possible_string: &str) -> Result<Token, Error> {
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(e) => Err(Error::InvalidNumber(possible_string.to_string())),
+            Err(_) => Err(Error::InvalidNumber(possible_string.to_string())),
         }
     }
 
@@ -86,7 +86,7 @@ impl Token {
         }
     }
 
-    fn tokenize_tokens(possible_json: &str) -> Vec<Result<Token, Error>> {
+    pub fn tokenize_tokens(possible_json: &str) -> Vec<Result<Token, Error>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
         let mut tokens = Vec::<Result<Token, Error>>::new();
@@ -98,7 +98,6 @@ impl Token {
     }
 }
 
-// Assume "    fdsdfds" cannot be a case and "" cannot be joined together
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
     let mut tokens = Vec::<String>::new();
@@ -146,8 +145,8 @@ mod tests {
 
         #[test]
         fn pass_space_in_string() {
-            let json = "\"fjdsoif fds\"";
-            assert_eq!(vec!["\"fjdsoif fds\""], tokenize_into_strings(json));
+            let json = "\" fjdsoif fds\" fd";
+            assert_eq!(vec!["\" fjdsoif fds\"", "fd"], tokenize_into_strings(json));
         }
 
         #[test]
