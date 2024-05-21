@@ -1,4 +1,11 @@
 #[derive(Debug, PartialEq)]
+pub enum LiteralError {
+    ExpectedLiteral(String, String),
+    InvalidString(String, String),
+    InvalidNumber(String),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Token {
     Null,
     Bool(bool),
@@ -7,20 +14,13 @@ pub enum Token {
     Punctuation(char),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    ExpectedLiteral(String, String),
-    InvalidString(String, String),
-    InvalidNumber(String),
-}
-
 impl Token {
     fn is_punctuation(c: &char) -> bool {
         const PUNCTUATIONS: &'static [char] = &[',', ':', '{', '}', '[', ']'];
         PUNCTUATIONS.contains(&c)
     }
 
-    fn try_from_string(possible_string: &str) -> Result<Token, Error> {
+    fn try_from_string(possible_string: &str) -> Result<Token, LiteralError> {
         assert!(possible_string.len() == 0);
 
         let num_quotations = possible_string
@@ -28,7 +28,7 @@ impl Token {
             .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
 
         if num_quotations % 2 == 1 {
-            return Err(Error::InvalidString(
+            return Err(LiteralError::InvalidString(
                 possible_string.to_string(),
                 "String has unmatched quotation".to_string(),
             ));
@@ -37,7 +37,7 @@ impl Token {
         let first = possible_string.chars().nth(0);
         let last = possible_string.chars().nth(possible_string.len() - 1);
         if num_quotations != 2 || first.unwrap() != '"' || last.unwrap() != '"' {
-            Err(Error::InvalidString(
+            Err(LiteralError::InvalidString(
                 possible_string.to_string(),
                 "Invalid String".to_string(),
             ))
@@ -48,17 +48,17 @@ impl Token {
         }
     }
 
-    fn try_from_number(possible_string: &str) -> Result<Token, Error> {
+    fn try_from_number(possible_string: &str) -> Result<Token, LiteralError> {
         assert!(possible_string.len() == 0);
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(_) => Err(Error::InvalidNumber(possible_string.to_string())),
+            Err(_) => Err(LiteralError::InvalidNumber(possible_string.to_string())),
         }
     }
 
-    fn try_from_token(token: &str) -> Result<Token, Error> {
+    fn try_from_token(token: &str) -> Result<Token, LiteralError> {
         if token.len() == 0 {
-            return Err(Error::ExpectedLiteral(
+            return Err(LiteralError::ExpectedLiteral(
                 token.to_string(),
                 "Nothing to parse".to_string(),
             ));
@@ -75,17 +75,17 @@ impl Token {
             ('t', "true") => Ok(Token::Bool(true)),
             ('"', _) => Token::try_from_string(token),
             ('0'..='9', _) => Token::try_from_number(token),
-            _ => Err(Error::ExpectedLiteral(
+            _ => Err(LiteralError::ExpectedLiteral(
                 token.to_string(),
                 "Expected a JSON object, array, or literal".to_string(),
             )),
         }
     }
 
-    pub fn try_from_json(possible_json: &str) -> Vec<Result<Token, Error>> {
+    pub fn try_from_json(possible_json: &str) -> Vec<Result<Token, LiteralError>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
-        let mut tokens = Vec::<Result<Token, Error>>::new();
+        let mut tokens = Vec::<Result<Token, LiteralError>>::new();
         for token in token_strings {
             tokens.push(Token::try_from_token(&token));
         }
@@ -170,12 +170,12 @@ mod tests {
 
         #[test]
         fn fail_space_separated_garbage() {
-            let expected: Vec<Result<Token, Error>> = vec![
-                Err(Error::ExpectedLiteral(
+            let expected: Vec<Result<Token, LiteralError>> = vec![
+                Err(LiteralError::ExpectedLiteral(
                     "this".to_string(),
                     "Expected a JSON object, array, or literal".to_string(),
                 )),
-                Err(Error::ExpectedLiteral(
+                Err(LiteralError::ExpectedLiteral(
                     "garbage".to_string(),
                     "Expected a JSON object, array, or literal".to_string(),
                 )),
@@ -189,7 +189,7 @@ mod tests {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec![Err(Error::InvalidString(
+            let expected = vec![Err(LiteralError::InvalidString(
                 "\"d\"fds\"potato\"".to_string(),
                 "Invalid String".to_string(),
             ))];
@@ -199,7 +199,7 @@ mod tests {
         #[test]
         fn fail_on_unmatched_quotation() {
             let json = r#""fds"#;
-            let expected = vec![Err(Error::InvalidString(
+            let expected = vec![Err(LiteralError::InvalidString(
                 "\"fds".to_string(),
                 "String has unmatched quotation".to_string(),
             ))];
@@ -209,7 +209,7 @@ mod tests {
         #[test]
         fn fail_on_invalid_number() {
             let json = r#"11.3de2"#;
-            let expected = vec![Err(Error::InvalidNumber("11.3de2".to_string()))];
+            let expected = vec![Err(LiteralError::InvalidNumber("11.3de2".to_string()))];
             assert_eq!(expected, Token::try_from_json(json));
         }
 

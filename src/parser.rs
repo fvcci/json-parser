@@ -11,9 +11,11 @@ pub enum Value {
     Object(HashMap<String, Value>),
 }
 
-pub fn parse(possible_json: &str) -> Result<Value, lexical::Error> {
-    
+enum Error {
+    LexicalError(lexical::LiteralError),
 }
+
+pub fn parse(_possible_json: &str) {}
 
 #[cfg(test)]
 mod tests {
