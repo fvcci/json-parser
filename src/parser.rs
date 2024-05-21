@@ -12,10 +12,13 @@ pub enum Value {
 }
 
 enum Error {
-    LexicalError(lexical::LiteralError),
+    LiteralError {
+        raw_literal: String,
+        description: String,
+    },
 }
 
-pub fn parse(_possible_json: &str) {}
+pub fn parse(_possible_json: &str) -> Result<Value, Vec<Error>> {}
 
 #[cfg(test)]
 mod tests {

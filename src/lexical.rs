@@ -82,15 +82,23 @@ impl Token {
         }
     }
 
-    pub fn try_from_json(possible_json: &str) -> Vec<Result<Token, LiteralError>> {
+    pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<LiteralError>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
-        let mut tokens = Vec::<Result<Token, LiteralError>>::new();
+        let mut tokens = Vec::<Token>::new();
+        let mut errors = Vec::<LiteralError>::new();
         for token in token_strings {
-            tokens.push(Token::try_from_token(&token));
+            match Token::try_from_token(&token) {
+                Ok(t) => tokens.push(t),
+                Err(literal_error) => errors.push(literal_error),
+            }
         }
 
-        tokens
+        if errors.len() > 0 {
+            Err(errors)
+        } else {
+            Ok(tokens)
+        }
     }
 }
 
@@ -170,18 +178,18 @@ mod tests {
 
         #[test]
         fn fail_space_separated_garbage() {
-            let expected: Vec<Result<Token, LiteralError>> = vec![
-                Err(LiteralError::ExpectedLiteral(
+            let expected: Vec<LiteralError> = vec![
+                LiteralError::ExpectedLiteral(
                     "this".to_string(),
                     "Expected a JSON object, array, or literal".to_string(),
-                )),
-                Err(LiteralError::ExpectedLiteral(
+                ),
+                LiteralError::ExpectedLiteral(
                     "garbage".to_string(),
                     "Expected a JSON object, array, or literal".to_string(),
-                )),
+                ),
             ];
             let json = "this garbage";
-            assert_eq!(expected, Token::try_from_json(json));
+            assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
@@ -189,35 +197,35 @@ mod tests {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec![Err(LiteralError::InvalidString(
+            let expected = vec![LiteralError::InvalidString(
                 "\"d\"fds\"potato\"".to_string(),
                 "Invalid String".to_string(),
-            ))];
-            assert_eq!(expected, Token::try_from_json(json));
+            )];
+            assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
         fn fail_on_unmatched_quotation() {
             let json = r#""fds"#;
-            let expected = vec![Err(LiteralError::InvalidString(
+            let expected = vec![LiteralError::InvalidString(
                 "\"fds".to_string(),
                 "String has unmatched quotation".to_string(),
-            ))];
-            assert_eq!(expected, Token::try_from_json(json));
+            )];
+            assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
         fn fail_on_invalid_number() {
             let json = r#"11.3de2"#;
-            let expected = vec![Err(LiteralError::InvalidNumber("11.3de2".to_string()))];
-            assert_eq!(expected, Token::try_from_json(json));
+            let expected = vec![LiteralError::InvalidNumber("11.3de2".to_string())];
+            assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
         fn pass_space_in_string() {
             let json = "\"fjdsoif fds\"";
             assert_eq!(
-                vec![Ok(Token::String("fjdsoif fds".to_string()))],
+                Ok(vec![Token::String("fjdsoif fds".to_string())]),
                 Token::try_from_json(json)
             );
         }
@@ -226,19 +234,19 @@ mod tests {
         fn should_separate_on_punctuation() {
             let json = r#"{"age":30,"is_student":[false]}"#;
             let expected = vec![
-                Ok(Token::Punctuation('{')),
-                Ok(Token::String(String::from("age"))),
-                Ok(Token::Punctuation(':')),
-                Ok(Token::Number(30.0)),
-                Ok(Token::Punctuation(',')),
-                Ok(Token::String(String::from("is_student"))),
-                Ok(Token::Punctuation(':')),
-                Ok(Token::Punctuation('[')),
-                Ok(Token::Bool(false)),
-                Ok(Token::Punctuation(']')),
-                Ok(Token::Punctuation('}')),
+                Token::Punctuation('{'),
+                Token::String(String::from("age")),
+                Token::Punctuation(':'),
+                Token::Number(30.0),
+                Token::Punctuation(','),
+                Token::String(String::from("is_student")),
+                Token::Punctuation(':'),
+                Token::Punctuation('['),
+                Token::Bool(false),
+                Token::Punctuation(']'),
+                Token::Punctuation('}'),
             ];
-            assert_eq!(expected, Token::try_from_json(json));
+            assert_eq!(Ok(expected), Token::try_from_json(json));
         }
     }
 }
