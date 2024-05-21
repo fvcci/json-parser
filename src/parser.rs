@@ -1,5 +1,7 @@
-use crate::lexical;
 use std::collections::HashMap;
+use std::iter::Peekable;
+
+use crate::lexical;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -12,13 +14,57 @@ pub enum Value {
 }
 
 enum Error {
-    LiteralError {
-        raw_literal: String,
-        description: String,
-    },
+    LiteralError(lexical::LiteralError),
+    Expected(String),
+    Unexpected(String),
 }
 
-pub fn parse(_possible_json: &str) -> Result<Value, Vec<Error>> {}
+pub fn parse_object<'a>(
+    _possible_json_it: impl Iterator<Item = &'a lexical::Token>,
+) -> Result<Value, Vec<Error>> {
+    Ok(Value::Null)
+}
+
+pub fn parse_array<'a>(
+    possible_json_it: impl Iterator<Item = &'a lexical::Token>,
+) -> Result<Value, Vec<Error>> {
+    let optional_token = possible_json_it.next();
+    if optional_token == None {
+        return Err(vec![Error::Expected("[".to_string())]);
+    }
+    let arr = Vec::<Value>::new();
+}
+
+pub fn parse_value<'a>(
+    mut possible_json_it: impl Iterator<Item = &'a lexical::Token>,
+) -> Result<Option<Value>, Vec<Error>> {
+    let optional_token = possible_json_it.next();
+    if optional_token == None {
+        return Ok(None);
+    }
+
+    match optional_token.unwrap() {
+        lexical::Token::Null => Ok(Some(Value::Null)),
+        lexical::Token::Bool(val) => Ok(Some(Value::Bool(*val))),
+        lexical::Token::String(val) => Ok(Some(Value::String((*val).as_str().to_string()))),
+        lexical::Token::Number(val) => Ok(Some(Value::Number(*val))),
+        lexical::Token::Punctuation(c) => match c {
+            '{' => Ok(Some(parse_object(possible_json_it)?)),
+            '[' => Ok(Some(parse_array(possible_json_it)?)),
+            ':' => Err(vec![Error::Expected("{".to_string())]),
+            ',' => Err(vec![Error::Unexpected(",".to_string())]),
+            '}' => Err(vec![Error::Expected("{".to_string())]),
+            ']' => Err(vec![Error::Expected("]".to_string())]),
+            a => panic!("{a} is not a valid punctuation in JSON"),
+        },
+    }
+}
+
+pub fn parse(possible_json: &str) -> Result<Value, Vec<Error>> {
+    let tokens = lexical::Token::try_from_json(possible_json)
+        .map_err(|x| x.into_iter().map(Error::LiteralError).collect::<Vec<_>>())?;
+    Ok(parse_value(tokens.iter())?.unwrap_or(Value::Null))
+}
 
 #[cfg(test)]
 mod tests {
