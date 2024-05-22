@@ -21,7 +21,7 @@ impl Token {
     }
 
     fn try_from_string(possible_string: &str) -> Result<Token, LiteralError> {
-        assert!(possible_string.len() == 0);
+        assert!(possible_string.len() != 0);
 
         let num_quotations = possible_string
             .chars()
@@ -49,7 +49,7 @@ impl Token {
     }
 
     fn try_from_number(possible_string: &str) -> Result<Token, LiteralError> {
-        assert!(possible_string.len() == 0);
+        assert!(possible_string.len() != 0);
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
             Err(_) => Err(LiteralError::InvalidNumber(possible_string.to_string())),
