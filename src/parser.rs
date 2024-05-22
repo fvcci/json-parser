@@ -13,44 +13,55 @@ pub enum Value {
     Object(HashMap<String, Value>),
 }
 
-enum Error {
+#[derive(Debug, PartialEq)]
+pub enum Error {
     LiteralError(lexical::LiteralError),
     Expected(String),
     Unexpected(String),
 }
 
-pub fn parse_object<'a>(
-    _possible_json_it: impl Iterator<Item = &'a lexical::Token>,
+fn parse_object<'a>(
+    _possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
 ) -> Result<Value, Vec<Error>> {
     Ok(Value::Null)
 }
 
-pub fn parse_array<'a>(
-    possible_json_it: impl Iterator<Item = &'a lexical::Token>,
+fn parse_array_elements<'a>(
+    _possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
+) -> Result<Value, Vec<Error>> {
+    Ok(Value::Null)
+}
+
+fn parse_array<'a>(
+    mut possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
+) -> Result<Value, Vec<Error>> {
+    let optional_token = possible_json_it.peek();
+    let reached_end_of_file = optional_token == None;
+    if reached_end_of_file {
+        return Err(vec![Error::Expected("]".to_string())]);
+    }
+
+    let mut _arr = Vec::<Value>::new();
+    let mut _errs = Vec::<Value>::new();
+    Ok(Value::Null)
+}
+
+fn parse_value<'a>(
+    mut possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
 ) -> Result<Value, Vec<Error>> {
     let optional_token = possible_json_it.next();
     if optional_token == None {
-        return Err(vec![Error::Expected("[".to_string())]);
-    }
-    let arr = Vec::<Value>::new();
-}
-
-pub fn parse_value<'a>(
-    mut possible_json_it: impl Iterator<Item = &'a lexical::Token>,
-) -> Result<Option<Value>, Vec<Error>> {
-    let optional_token = possible_json_it.next();
-    if optional_token == None {
-        return Ok(None);
+        return Ok(Value::Null);
     }
 
     match optional_token.unwrap() {
-        lexical::Token::Null => Ok(Some(Value::Null)),
-        lexical::Token::Bool(val) => Ok(Some(Value::Bool(*val))),
-        lexical::Token::String(val) => Ok(Some(Value::String((*val).as_str().to_string()))),
-        lexical::Token::Number(val) => Ok(Some(Value::Number(*val))),
+        lexical::Token::Null => Ok(Value::Null),
+        lexical::Token::Bool(val) => Ok(Value::Bool(*val)),
+        lexical::Token::String(val) => Ok(Value::String((*val).as_str().to_string())),
+        lexical::Token::Number(val) => Ok(Value::Number(*val)),
         lexical::Token::Punctuation(c) => match c {
-            '{' => Ok(Some(parse_object(possible_json_it)?)),
-            '[' => Ok(Some(parse_array(possible_json_it)?)),
+            '{' => Ok(parse_object(possible_json_it)?),
+            '[' => Ok(parse_array(possible_json_it)?),
             ':' => Err(vec![Error::Expected("{".to_string())]),
             ',' => Err(vec![Error::Unexpected(",".to_string())]),
             '}' => Err(vec![Error::Expected("{".to_string())]),
@@ -63,7 +74,7 @@ pub fn parse_value<'a>(
 pub fn parse(possible_json: &str) -> Result<Value, Vec<Error>> {
     let tokens = lexical::Token::try_from_json(possible_json)
         .map_err(|x| x.into_iter().map(Error::LiteralError).collect::<Vec<_>>())?;
-    Ok(parse_value(tokens.iter())?.unwrap_or(Value::Null))
+    parse_value(tokens.iter().peekable())
 }
 
 #[cfg(test)]
@@ -76,18 +87,17 @@ mod tests {
     fn garbage_input() {}
 
     // These should be lexer tests
-    #[ignore]
     #[test]
-    fn can_parse_single_value_json() {
+    fn pass_single_value_json() {
         assert_eq!(Ok(Value::Null), parse("null"));
         assert_eq!(Ok(Value::Bool(true)), parse("true"));
         assert_eq!(Ok(Value::Bool(false)), parse("false"));
         assert_eq!(Ok(Value::Number(12321.0)), parse("12321"));
         assert_eq!(
             Ok(Value::String(String::from("Hello World"))),
-            parse("Hello World")
+            parse("\"Hello World\"")
         );
-        assert_eq!(Ok(Value::Array(Vec::new())), parse("[]"));
-        assert_eq!(Ok(Value::Object(HashMap::new())), parse("{}"));
+        // assert_eq!(Ok(Value::Array(Vec::new())), parse("[]"));
+        // assert_eq!(Ok(Value::Object(HashMap::new())), parse("{}"));
     }
 }
