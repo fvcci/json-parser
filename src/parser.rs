@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter::Peekable;
 
 use crate::lexical;
 
@@ -20,48 +19,48 @@ pub enum Error {
     Unexpected(String),
 }
 
-fn parse_object<'a>(
-    _possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
-) -> Result<Value, Vec<Error>> {
+fn parse_object(tokens: &[lexical::Token]) -> Result<Value, Vec<Error>> {
     Ok(Value::Null)
 }
 
-fn parse_array_elements<'a>(
-    _possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
-) -> Result<Value, Vec<Error>> {
-    Ok(Value::Null)
+fn parse_array_elements(tokens: &[lexical::Token]) -> Result<Vec<Value>, Vec<Error>> {
+    let token = tokens;
+    // .next()
+    // .ok_or(vec![Error::Unexpected("End of file".to_string())])?;
+
+    let mut elements = parse_array_elements(tokens);
+    Ok(Vec::new())
 }
 
-fn parse_array<'a>(
-    mut possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
-) -> Result<Value, Vec<Error>> {
-    let optional_token = possible_json_it.peek();
-    let reached_end_of_file = optional_token == None;
-    if reached_end_of_file {
-        return Err(vec![Error::Expected("]".to_string())]);
+fn parse_array(mut tokens: &[lexical::Token]) -> Result<Value, Vec<Error>> {
+    let open_bracket = &tokens[0];
+    assert!(*open_bracket == lexical::Token::Punctuation('['));
+
+    let token = &tokens[1];
+    // .peek()
+    // .ok_or(vec![Error::Unexpected("End of file".to_string())])?;
+
+    match token {
+        lexical::Token::Punctuation(']') => Ok(Value::Array(vec![])),
+        _ => Ok(Value::Array(parse_array_elements(
+            &tokens[1..tokens.len()],
+        )?)),
     }
-
-    let mut _arr = Vec::<Value>::new();
-    let mut _errs = Vec::<Value>::new();
-    Ok(Value::Null)
 }
 
-fn parse_value<'a>(
-    mut possible_json_it: Peekable<impl Iterator<Item = &'a lexical::Token>>,
-) -> Result<Value, Vec<Error>> {
-    let optional_token = possible_json_it.next();
-    if optional_token == None {
-        return Ok(Value::Null);
-    }
+fn parse_value(tokens: &[lexical::Token]) -> Result<Value, Vec<Error>> {
+    let token = &tokens[0];
+    // .peek()
+    // .ok_or(Err(vec![Error::Unexpected("End of file".to_string())]))?;
 
-    match optional_token.unwrap() {
+    match token {
         lexical::Token::Null => Ok(Value::Null),
         lexical::Token::Bool(val) => Ok(Value::Bool(*val)),
         lexical::Token::String(val) => Ok(Value::String((*val).as_str().to_string())),
         lexical::Token::Number(val) => Ok(Value::Number(*val)),
-        lexical::Token::Punctuation(c) => match c {
-            '{' => Ok(parse_object(possible_json_it)?),
-            '[' => Ok(parse_array(possible_json_it)?),
+        lexical::Token::Punctuation(c) => match *c {
+            '{' => Ok(parse_object(tokens)?),
+            '[' => Ok(parse_array(tokens)?),
             ':' => Err(vec![Error::Expected("{".to_string())]),
             ',' => Err(vec![Error::Unexpected(",".to_string())]),
             '}' => Err(vec![Error::Expected("{".to_string())]),
@@ -71,10 +70,10 @@ fn parse_value<'a>(
     }
 }
 
-pub fn parse(possible_json: &str) -> Result<Value, Vec<Error>> {
-    let tokens = lexical::Token::try_from_json(possible_json)
+pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
+    let tokens = lexical::Token::try_from_json(json)
         .map_err(|x| x.into_iter().map(Error::LiteralError).collect::<Vec<_>>())?;
-    parse_value(tokens.iter().peekable())
+    parse_value(&tokens[0..tokens.len()])
 }
 
 #[cfg(test)]
