@@ -35,23 +35,26 @@ fn parse_array_elements(
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
     while remaining_tokens[0] != lexical::Token::Punctuation(']') {
-        match remaining_tokens[0] {
-            lexical::Token::Punctuation(',') => remaining_tokens = &remaining_tokens[1..],
-            _ => match parse_value(remaining_tokens) {
-                Ok((parsed_elements, new_remaining_tokens)) => {
-                    elements.push(parsed_elements);
-                    remaining_tokens = new_remaining_tokens;
-                }
-                Err(parse_errors) => {
-                    remaining_tokens = &remaining_tokens[1..];
-                    errors.extend(parse_errors);
-                }
-            },
+        let mut skipped_separator = false;
+        match parse_value(remaining_tokens) {
+            Ok((parsed_elements, new_remaining_tokens)) => {
+                remaining_tokens = new_remaining_tokens;
+                elements.push(parsed_elements);
+            }
+            Err(parse_errors) => {
+                skipped_separator = vec![Error::Expected("JSON value".to_string())] == parse_errors;
+                remaining_tokens = &remaining_tokens[1..];
+                errors.extend(parse_errors);
+            }
+        }
+
+        if remaining_tokens[0] == lexical::Token::Punctuation(',') && !skipped_separator {
+            remaining_tokens = &remaining_tokens[1..];
         }
     }
 
     if errors.is_empty() {
-        Ok((elements, remaining_tokens))
+        Ok((elements, &remaining_tokens[1..]))
     } else {
         Err(errors)
     }
@@ -146,18 +149,15 @@ mod tests {
                 Value::Bool(false),
                 Value::String("a".to_string()),
                 Value::Number(1.0),
+                Value::Array(vec![Value::Bool(false), Value::String("a".to_string())]),
                 Value::Null,
-                Value::Array(vec![Value::Bool(false), Value::String("a".to_string())])
             ])),
             parse(json)
         );
     }
 
-    // #[test]
-    // fn missing_comma() {
-    //     let json = r#" [ false "a", ]
-    //     "#;
-
-    //     assert_eq!(Err(), parse(json));
-    // }
+    #[test]
+    fn missing_comma() {
+        assert_eq!(Err(vec![]), parse(r#"[false "a"]"#));
+    }
 }
