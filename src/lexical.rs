@@ -231,7 +231,7 @@ mod tests {
         }
 
         #[test]
-        fn should_separate_on_punctuation() {
+        fn should_tokenize_on_punctuation() {
             let json = r#"{"age":30,"is_student":[false]}"#;
             let expected = vec![
                 Token::Punctuation('{'),
