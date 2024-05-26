@@ -64,6 +64,11 @@ fn parse_array_elements(
                 remaining_tokens = &[];
                 break;
             }
+            [lexical::Token::Punctuation(','), lexical::Token::Punctuation(']'), ..] => {
+                errors.push(Error::Expected("value".to_string()));
+                remaining_tokens = &remaining_tokens[2..];
+                break;
+            }
             [lexical::Token::Punctuation(','), ..] => {
                 remaining_tokens = &remaining_tokens[1..];
             }
@@ -203,7 +208,14 @@ mod tests {
 
     #[test]
     fn fail_many_commas() {
-        assert_eq!(Err(vec![]), parse(r#"[,,]"#));
+        assert_eq!(
+            Err(vec![
+                Error::Expected("value".to_string()),
+                Error::Expected("value".to_string()),
+                Error::Expected("value".to_string())
+            ]),
+            parse(r#"[,,]"#)
+        );
     }
 
     #[test]
@@ -229,6 +241,27 @@ mod tests {
         assert_eq!(
             Err(vec![Error::Expected("end of file".to_string())]),
             parse("null null")
+        )
+    }
+
+    #[test]
+    fn fail_unopened_array() {
+        assert_eq!(
+            Err(vec![Error::MatchingOpeningPairNotFound(
+                "{ not found".to_string()
+            )]),
+            parse("[ false, }]")
+        )
+    }
+
+    #[test]
+    fn include_elements_errors() {
+        assert_eq!(
+            Err(vec![
+                Error::Expected("value".to_string()),
+                Error::Expected("value".to_string())
+            ]),
+            parse("[[ , false], ]")
         )
     }
 }
