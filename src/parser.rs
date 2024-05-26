@@ -37,7 +37,7 @@ fn parse_array_elements(
 
     const END_OF_ELEMENTS: lexical::Token = lexical::Token::Punctuation(']');
 
-    while remaining_tokens[0] != END_OF_ELEMENTS {
+    loop {
         match parse_value(remaining_tokens) {
             Ok((parsed_elements, next_remaining_tokens)) => {
                 remaining_tokens = next_remaining_tokens;
@@ -51,17 +51,36 @@ fn parse_array_elements(
             }
         }
 
-        let skip_comma = remaining_tokens[0] != END_OF_ELEMENTS;
-        if skip_comma {
-            if remaining_tokens[0] != lexical::Token::Punctuation(',') {
-                errors.push(Error::Expected("Expected value".to_string()));
+        match remaining_tokens {
+            [] => {
+                errors.push(Error::UnexpectedEndOfFile(
+                    "Expected ',' or ']'".to_string(),
+                ));
+                break;
             }
-            remaining_tokens = &remaining_tokens[1..];
+            [lexical::Token::Punctuation(',')] => {
+                errors.push(Error::UnexpectedEndOfFile("Expected ']'".to_string()));
+                remaining_tokens = &[];
+                break;
+            }
+            [lexical::Token::Punctuation(','), ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+            }
+            [END_OF_ELEMENTS, ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+                break;
+            }
+            [_, ..] => {
+                errors.push(Error::Expected(",".to_string()));
+            }
         }
     }
 
     if errors.is_empty() {
-        Ok((elements, &remaining_tokens[1..]))
+        assert!(
+            remaining_tokens.is_empty() || remaining_tokens[0] == lexical::Token::Punctuation(',')
+        );
+        Ok((elements, remaining_tokens))
     } else {
         Err(errors)
     }
@@ -76,14 +95,14 @@ fn parse_array(tokens: &[lexical::Token]) -> Result<(Value, &[lexical::Token]), 
     }
 
     match tokens[1] {
-        lexical::Token::Punctuation(']') => Ok((Value::Array(Vec::new()), &tokens[1..])),
+        lexical::Token::Punctuation(']') => Ok((Value::Array(Vec::new()), &tokens[2..])),
         _ => parse_array_elements(&tokens[1..])
             .map(|(parsed_value, remaining_tokens)| (Value::Array(parsed_value), remaining_tokens)),
     }
 }
 
 fn parse_value(tokens: &[lexical::Token]) -> Result<(Value, &[lexical::Token]), Vec<Error>> {
-    if tokens.len() == 0 {
+    if tokens.is_empty() {
         return Err(vec![Error::UnexpectedEndOfFile(
             "Expected value".to_string(),
         )]);
@@ -98,7 +117,7 @@ fn parse_value(tokens: &[lexical::Token]) -> Result<(Value, &[lexical::Token]), 
             '{' => return parse_object(tokens),
             '[' => return parse_array(tokens),
             ':' => Err(vec![Error::Expected("{".to_string())])?,
-            ',' => Err(vec![Error::Expected("Expected value".to_string())])?,
+            ',' => Err(vec![Error::Expected("value".to_string())])?,
             '}' => Err(vec![Error::MatchingOpeningPairNotFound(
                 "{ not found".to_string(),
             )])?,
@@ -115,17 +134,17 @@ fn parse_value(tokens: &[lexical::Token]) -> Result<(Value, &[lexical::Token]), 
 pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
     let tokens = lexical::Token::try_from_json(json)
         .map_err(|x| x.into_iter().map(Error::LiteralError).collect::<Vec<_>>())?;
-    parse_value(&tokens[..]).map(|(parsed_value, _)| parsed_value)
+    let (parsed_value, tokens) = parse_value(&tokens[..])?;
+    if !tokens.is_empty() {
+        Err(vec![Error::Expected("end of file".to_string())])
+    } else {
+        Ok(parsed_value)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // These should be lexer tests
-    #[ignore]
-    #[test]
-    fn garbage_input() {}
 
     #[test]
     fn pass_single_value_json() {
@@ -166,8 +185,34 @@ mod tests {
     #[test]
     fn fail_missing_comma() {
         assert_eq!(
-            Err(vec![Error::Expected("Expected value".to_string())]),
+            Err(vec![Error::Expected(",".to_string())]),
             parse(r#"[false "a"]"#)
         );
+    }
+
+    #[test]
+    fn fail_unclosed_array() {
+        assert_eq!(
+            Err(vec![Error::UnexpectedEndOfFile(
+                "Expected ',' or ']'".to_string()
+            )]),
+            parse("[true")
+        );
+    }
+
+    #[test]
+    fn fail_trailing_comma_array() {
+        assert_eq!(
+            Err(vec![Error::UnexpectedEndOfFile("Expected ']'".to_string())]),
+            parse("[true,")
+        );
+    }
+
+    #[test]
+    fn fail_more_than_one_json_value() {
+        assert_eq!(
+            Err(vec![Error::Expected("end of file".to_string())]),
+            parse("null null")
+        )
     }
 }
