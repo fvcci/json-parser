@@ -34,21 +34,28 @@ fn parse_array_elements(
     let mut elements = Vec::<Value>::new();
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
-    while remaining_tokens[0] != lexical::Token::Punctuation(']') {
-        let mut skipped_separator = false;
+
+    const END_OF_ELEMENTS: lexical::Token = lexical::Token::Punctuation(']');
+
+    while remaining_tokens[0] != END_OF_ELEMENTS {
         match parse_value(remaining_tokens) {
-            Ok((parsed_elements, new_remaining_tokens)) => {
-                remaining_tokens = new_remaining_tokens;
+            Ok((parsed_elements, next_remaining_tokens)) => {
+                remaining_tokens = next_remaining_tokens;
                 elements.push(parsed_elements);
             }
             Err(parse_errors) => {
-                skipped_separator = vec![Error::Expected("JSON value".to_string())] == parse_errors;
-                remaining_tokens = &remaining_tokens[1..];
+                if remaining_tokens[0] != lexical::Token::Punctuation(',') {
+                    remaining_tokens = &remaining_tokens[1..];
+                }
                 errors.extend(parse_errors);
             }
         }
 
-        if remaining_tokens[0] == lexical::Token::Punctuation(',') && !skipped_separator {
+        let skip_comma = remaining_tokens[0] != END_OF_ELEMENTS;
+        if skip_comma {
+            if remaining_tokens[0] != lexical::Token::Punctuation(',') {
+                errors.push(Error::Expected("Expected value".to_string()));
+            }
             remaining_tokens = &remaining_tokens[1..];
         }
     }
@@ -91,7 +98,7 @@ fn parse_value(tokens: &[lexical::Token]) -> Result<(Value, &[lexical::Token]), 
             '{' => return parse_object(tokens),
             '[' => return parse_array(tokens),
             ':' => Err(vec![Error::Expected("{".to_string())])?,
-            ',' => Err(vec![Error::Expected("JSON value".to_string())])?,
+            ',' => Err(vec![Error::Expected("Expected value".to_string())])?,
             '}' => Err(vec![Error::MatchingOpeningPairNotFound(
                 "{ not found".to_string(),
             )])?,
@@ -157,7 +164,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_comma() {
-        assert_eq!(Err(vec![]), parse(r#"[false "a"]"#));
+    fn fail_missing_comma() {
+        assert_eq!(
+            Err(vec![Error::Expected("Expected value".to_string())]),
+            parse(r#"[false "a"]"#)
+        );
     }
 }
