@@ -149,7 +149,6 @@ fn parse_object_members(
                 errors.push(Error::Expected("object key".to_string()));
             }
             _ => {
-                println!("{tokens:?}");
                 errors.push(Error::Expected("object member".to_string()));
             }
         }

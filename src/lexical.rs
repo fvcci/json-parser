@@ -1,5 +1,3 @@
-use std::cmp::min;
-
 #[derive(Debug, PartialEq)]
 pub enum LiteralError {
     ExpectedLiteral(String, String),
@@ -24,21 +22,6 @@ impl Token {
 
     fn try_from_string(possible_string: &str) -> Result<Token, LiteralError> {
         assert!(!possible_string.is_empty());
-
-        // let num_quotations = possible_string
-        //     .chars()
-        //     .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
-
-        // let num_escaped_quotes = possible_string
-        //     .char_indices()
-        //     .skip(1)
-        //     .fold(0, |acc, (i, _)| {
-        //         if (possible_string[i - 1], possible_string) == ('\\', '"') {
-        //             acc + 1
-        //         } else {
-        //             acc
-        //         }
-        //     });
 
         let mut chars = possible_string.chars().peekable();
         let mut num_quotations = 0;
@@ -65,16 +48,11 @@ impl Token {
         let first = possible_string.chars().next().unwrap();
         let last = possible_string.chars().last().unwrap();
         if possible_string.len() == 1 || num_quotations != 2 || first != '"' || last != '"' {
-            println!("num_quotations: {num_quotations}, first: {first}, last: {last}",);
             Err(LiteralError::InvalidString(
                 possible_string.to_string(),
                 "Invalid String".to_string(),
             ))
         } else {
-            // println!(
-            //     "{}",
-            //     possible_string[1..possible_string.len() - 1].to_string()
-            // );
             Ok(Token::String(
                 possible_string[1..possible_string.len() - 1].to_string(),
             ))
@@ -82,7 +60,7 @@ impl Token {
     }
 
     fn try_from_number(possible_string: &str) -> Result<Token, LiteralError> {
-        assert!(possible_string.len() != 0);
+        assert!(!possible_string.is_empty());
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
             Err(_) => Err(LiteralError::InvalidNumber(possible_string.to_string())),
@@ -90,7 +68,7 @@ impl Token {
     }
 
     fn try_from_token(token: &str) -> Result<Token, LiteralError> {
-        if token.len() == 0 {
+        if token.is_empty() {
             return Err(LiteralError::ExpectedLiteral(
                 token.to_string(),
                 "Nothing to parse".to_string(),
