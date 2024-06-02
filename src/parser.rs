@@ -26,7 +26,7 @@ struct EndSequenceItemStatus<'a> {
     error_opt: Option<Error>,
 }
 
-fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequenceItemStatus {
+fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequenceItemStatus<'a> {
     match tokens {
         [] => EndSequenceItemStatus {
             reached_end: true,
@@ -40,8 +40,8 @@ fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequen
             next_token: &[],
             error_opt: Some(Error::UnexpectedEndOfFile(format!("Expected '{end}'"))),
         },
-        [lexical::Token::Punctuation(','), possible_end, ..]
-            if *possible_end == lexical::Token::Punctuation(end) =>
+        [lexical::Token::Punctuation(','), lexical::Token::Punctuation(possible_end), ..]
+            if *possible_end == end =>
         {
             EndSequenceItemStatus {
                 reached_end: true,
@@ -54,7 +54,7 @@ fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequen
             next_token: &tokens[1..],
             error_opt: None,
         },
-        [possible_end, ..] if *possible_end == lexical::Token::Punctuation(end) => {
+        [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
             EndSequenceItemStatus {
                 reached_end: true,
                 next_token: &tokens[1..],
@@ -80,7 +80,7 @@ fn parse_until_comma_or_end(
             [] => {
                 break;
             }
-            [possible_end, ..] if *possible_end == lexical::Token::Punctuation(end) => {
+            [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
                 break;
             }
             [lexical::Token::Punctuation(','), ..] => {
@@ -106,9 +106,13 @@ fn parse_object_members(
     Result<HashMap<String, Value>, Vec<Error>>,
     &[lexical::Token],
 ) {
+    const END_OF_MEMBERS: char = '}';
+
     if tokens.is_empty() {
         return (
-            Err(vec![Error::UnexpectedEndOfFile("Expected '}'".to_string())]),
+            Err(vec![Error::UnexpectedEndOfFile(format!(
+                "Expected '{END_OF_MEMBERS}'"
+            ))]),
             &[],
         );
     }
@@ -116,8 +120,6 @@ fn parse_object_members(
     let mut members = HashMap::<String, Value>::new();
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
-
-    const END_OF_MEMBERS: char = '}';
 
     loop {
         match remaining_tokens {
@@ -198,9 +200,13 @@ fn parse_object(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexi
 fn parse_array_elements(
     tokens: &[lexical::Token],
 ) -> (Result<Vec<Value>, Vec<Error>>, &[lexical::Token]) {
+    const END_OF_ELEMENTS: char = ']';
+
     if tokens.is_empty() {
         return (
-            Err(vec![Error::UnexpectedEndOfFile("Expected ']'".to_string())]),
+            Err(vec![Error::UnexpectedEndOfFile(format!(
+                "Expected '{END_OF_ELEMENTS}'"
+            ))]),
             &[],
         );
     }
@@ -208,8 +214,6 @@ fn parse_array_elements(
     let mut elements = Vec::<Value>::new();
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
-
-    const END_OF_ELEMENTS: char = ']';
 
     loop {
         match parse_value(remaining_tokens) {
