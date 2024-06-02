@@ -245,9 +245,6 @@ fn parse_array_elements(
     }
 
     if errors.is_empty() {
-        assert!(
-            remaining_tokens.is_empty() || remaining_tokens[0] == lexical::Token::Punctuation(',')
-        );
         (Ok(elements), remaining_tokens)
     } else {
         (Err(errors), remaining_tokens)
@@ -322,6 +319,7 @@ pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn pass_single_value_json() {

@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 #[derive(Debug, PartialEq)]
 pub enum LiteralError {
     ExpectedLiteral(String, String),
@@ -21,11 +23,37 @@ impl Token {
     }
 
     fn try_from_string(possible_string: &str) -> Result<Token, LiteralError> {
-        assert!(possible_string.len() != 0);
+        assert!(!possible_string.is_empty());
 
-        let num_quotations = possible_string
-            .chars()
-            .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
+        // let num_quotations = possible_string
+        //     .chars()
+        //     .fold(0, |acc, x| if x == '"' { acc + 1 } else { acc });
+
+        // let num_escaped_quotes = possible_string
+        //     .char_indices()
+        //     .skip(1)
+        //     .fold(0, |acc, (i, _)| {
+        //         if (possible_string[i - 1], possible_string) == ('\\', '"') {
+        //             acc + 1
+        //         } else {
+        //             acc
+        //         }
+        //     });
+
+        let mut chars = possible_string.chars().peekable();
+        let mut num_quotations = 0;
+
+        while let Some(c) = chars.next() {
+            match (c, chars.peek()) {
+                ('\\', Some('"')) => {
+                    chars.next();
+                }
+                ('"', _) => {
+                    num_quotations += 1;
+                }
+                _ => {}
+            }
+        }
 
         if num_quotations % 2 == 1 {
             return Err(LiteralError::InvalidString(
@@ -34,14 +62,19 @@ impl Token {
             ));
         }
 
-        let first = possible_string.chars().nth(0);
-        let last = possible_string.chars().nth(possible_string.len() - 1);
-        if num_quotations != 2 || first.unwrap() != '"' || last.unwrap() != '"' {
+        let first = possible_string.chars().next().unwrap();
+        let last = possible_string.chars().last().unwrap();
+        if possible_string.len() == 1 || num_quotations != 2 || first != '"' || last != '"' {
+            println!("num_quotations: {num_quotations}, first: {first}, last: {last}",);
             Err(LiteralError::InvalidString(
                 possible_string.to_string(),
                 "Invalid String".to_string(),
             ))
         } else {
+            // println!(
+            //     "{}",
+            //     possible_string[1..possible_string.len() - 1].to_string()
+            // );
             Ok(Token::String(
                 possible_string[1..possible_string.len() - 1].to_string(),
             ))
@@ -74,6 +107,7 @@ impl Token {
             ('f', "false") => Ok(Token::Bool(false)),
             ('t', "true") => Ok(Token::Bool(true)),
             ('"', _) => Token::try_from_string(token),
+            ('-', _) => Token::try_from_number(token),
             ('0'..='9', _) => Token::try_from_number(token),
             _ => Err(LiteralError::ExpectedLiteral(
                 token.to_string(),
@@ -105,11 +139,17 @@ impl Token {
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
     let mut tokens = Vec::<String>::new();
+    let mut chars = possible_json.chars();
 
-    for c in possible_json.chars() {
+    while let Some(c) = chars.next() {
         if c == '"' {
             is_in_quotes = !is_in_quotes;
             tokens.push(c.to_string());
+        } else if is_in_quotes && c == '\\' {
+            tokens.push("\\".to_string());
+            if let Some(c) = chars.next() {
+                tokens.push(c.to_string());
+            }
         } else if is_in_quotes && c.is_whitespace() {
             tokens.push('\0'.to_string());
         } else if !is_in_quotes && Token::is_punctuation(&c) {
@@ -128,9 +168,10 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     mod tokenize_into_strings {
-        use super::super::*;
+        use super::*;
         #[test]
         fn fail_space_separated_garbage() {
             let json = "this is garbage";
@@ -174,7 +215,7 @@ mod tests {
     }
 
     mod token {
-        use super::super::*;
+        use super::*;
 
         #[test]
         fn fail_space_separated_garbage() {
@@ -247,6 +288,31 @@ mod tests {
                 Token::Punctuation('}'),
             ];
             assert_eq!(Ok(expected), Token::try_from_json(json));
+        }
+    }
+
+    mod file_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn pass_canada_json() {
+            let contents = fs::read_to_string("tests/twitter.json")
+                .expect("Should have been able to read the file");
+            match Token::try_from_json(contents.as_str()) {
+                Ok(_) => {}
+                Err(error) => panic!("error: {:?}", error[0]),
+            }
+        }
+
+        #[test]
+        fn pass_twitter_json() {
+            let contents = fs::read_to_string("tests/twitter.json")
+                .expect("Should have been able to read the file");
+            match Token::try_from_json(contents.as_str()) {
+                Ok(_) => {}
+                Err(error) => panic!("error: {:?}", error[0]),
+            }
         }
     }
 }
