@@ -20,8 +20,131 @@ pub enum Error {
     MatchingOpeningPairNotFound(String),
 }
 
-fn parse_object(_tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexical::Token]) {
-    (Ok(Value::Null), &[])
+fn parse_object_members(
+    tokens: &[lexical::Token],
+) -> (
+    Result<HashMap<String, Value>, Vec<Error>>,
+    &[lexical::Token],
+) {
+    if tokens.is_empty() {
+        return (
+            Err(vec![Error::UnexpectedEndOfFile("Expected '}'".to_string())]),
+            &[],
+        );
+    }
+
+    let mut members = HashMap::<String, Value>::new();
+    let mut errors = Vec::<Error>::new();
+    let mut remaining_tokens = tokens;
+
+    const END_OF_MEMBERS: lexical::Token = lexical::Token::Punctuation('}');
+
+    loop {
+        match remaining_tokens {
+            [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
+                remaining_tokens = &remaining_tokens[2..];
+                match parse_value(remaining_tokens) {
+                    (Ok(value), next_remaining_tokens) => {
+                        remaining_tokens = next_remaining_tokens;
+                        members.insert(s.as_str().to_string(), value);
+                    }
+                    (Err(parse_errors), next_remaining_tokens) => {
+                        remaining_tokens = next_remaining_tokens;
+                        errors.extend(parse_errors);
+                    }
+                }
+            }
+            [lexical::Token::String(_), ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+                errors.push(Error::Expected(":".to_string()));
+            }
+            [lexical::Token::Punctuation(':'), ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+                errors.push(Error::Expected("object key".to_string()));
+            }
+            _ => {
+                errors.push(Error::Expected("object member".to_string()));
+            }
+        }
+
+        let mut seen_non_comma_value = false;
+        loop {
+            match remaining_tokens {
+                [] => {
+                    break;
+                }
+                [END_OF_MEMBERS, ..] => {
+                    break;
+                }
+                [lexical::Token::Punctuation(','), ..] => {
+                    break;
+                }
+                _ => {
+                    remaining_tokens = &remaining_tokens[1..];
+                    seen_non_comma_value = true;
+                }
+            }
+        }
+        if seen_non_comma_value {
+            errors.push(Error::Expected(",".to_string()));
+        }
+
+        // println!("{:?}", remaining_tokens);
+
+        match remaining_tokens {
+            [] => {
+                errors.push(Error::UnexpectedEndOfFile(
+                    "Expected ',' or '}'".to_string(),
+                ));
+                break;
+            }
+            [lexical::Token::Punctuation(',')] => {
+                errors.push(Error::UnexpectedEndOfFile("Expected '}'".to_string()));
+                remaining_tokens = &[];
+                break;
+            }
+            [lexical::Token::Punctuation(','), END_OF_MEMBERS, ..] => {
+                errors.push(Error::Expected("value".to_string()));
+                remaining_tokens = &remaining_tokens[2..];
+                break;
+            }
+            [lexical::Token::Punctuation(','), ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+            }
+            [END_OF_MEMBERS, ..] => {
+                remaining_tokens = &remaining_tokens[1..];
+                break;
+            }
+            [_, ..] => {
+                errors.push(Error::Expected(",".to_string()));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        (Ok(members), remaining_tokens)
+    } else {
+        (Err(errors), remaining_tokens)
+    }
+}
+
+fn parse_object(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexical::Token]) {
+    match tokens {
+        [lexical::Token::Punctuation('{')] => (
+            Err(vec![Error::UnexpectedEndOfFile("Expected '}'".to_string())]),
+            &[],
+        ),
+        [lexical::Token::Punctuation('{'), lexical::Token::Punctuation('}')] => {
+            (Ok(Value::Object(HashMap::new())), &tokens[2..])
+        }
+        [lexical::Token::Punctuation('{'), ..] => {
+            let (parsed_elements, remaining_tokens) = parse_object_members(&tokens[1..]);
+            (parsed_elements.map(Value::Object), remaining_tokens)
+        }
+        _ => {
+            panic!("Objects must start with '{{'");
+        }
+    }
 }
 
 fn parse_array_elements(
@@ -29,7 +152,7 @@ fn parse_array_elements(
 ) -> (Result<Vec<Value>, Vec<Error>>, &[lexical::Token]) {
     if tokens.is_empty() {
         return (
-            Err(vec![Error::UnexpectedEndOfFile("Expected ]".to_string())]),
+            Err(vec![Error::UnexpectedEndOfFile("Expected ']'".to_string())]),
             &[],
         );
     }
@@ -64,7 +187,7 @@ fn parse_array_elements(
                 remaining_tokens = &[];
                 break;
             }
-            [lexical::Token::Punctuation(','), lexical::Token::Punctuation(']'), ..] => {
+            [lexical::Token::Punctuation(','), END_OF_ELEMENTS, ..] => {
                 errors.push(Error::Expected("value".to_string()));
                 remaining_tokens = &remaining_tokens[2..];
                 break;
@@ -93,21 +216,20 @@ fn parse_array_elements(
 }
 
 fn parse_array(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexical::Token]) {
-    let open_bracket = &tokens[0];
-    assert!(*open_bracket == lexical::Token::Punctuation('['));
-
-    if tokens.len() == 1 {
-        return (
-            Err(vec![Error::UnexpectedEndOfFile("Expected ]".to_string())]),
+    match tokens {
+        [lexical::Token::Punctuation('[')] => (
+            Err(vec![Error::UnexpectedEndOfFile("Expected ']'".to_string())]),
             &[],
-        );
-    }
-
-    match tokens[1] {
-        lexical::Token::Punctuation(']') => (Ok(Value::Array(Vec::new())), &tokens[2..]),
-        _ => {
+        ),
+        [lexical::Token::Punctuation('['), lexical::Token::Punctuation(']')] => {
+            (Ok(Value::Array(Vec::new())), &tokens[2..])
+        }
+        [lexical::Token::Punctuation('['), ..] => {
             let (parsed_elements, remaining_tokens) = parse_array_elements(&tokens[1..]);
             (parsed_elements.map(Value::Array), remaining_tokens)
+        }
+        _ => {
+            panic!("Arrays must start with '['");
         }
     }
 }
@@ -173,7 +295,7 @@ mod tests {
             parse("\"Hello World\"")
         );
         assert_eq!(Ok(Value::Array(Vec::new())), parse("[]"));
-        // assert_eq!(Ok(Value::Object(HashMap::new())), parse("{}"));
+        assert_eq!(Ok(Value::Object(HashMap::new())), parse("{}"));
     }
 
     #[test]
@@ -250,7 +372,7 @@ mod tests {
             Err(vec![Error::MatchingOpeningPairNotFound(
                 "{ not found".to_string()
             )]),
-            parse("[ false, }]")
+            parse("[false, }]")
         )
     }
 
@@ -263,5 +385,42 @@ mod tests {
             ]),
             parse("[[ , false], ]")
         )
+    }
+
+    #[test]
+    fn fail_on_no_key() {
+        assert_eq!(
+            Err(vec![
+                Error::Expected("object key".to_string()),
+                Error::Expected(",".to_string()),
+            ]),
+            parse(r#"{ : true}"#)
+        )
+    }
+
+    #[test]
+    fn fail_on_no_semi_colon() {
+        assert_eq!(
+            Err(vec![Error::Expected(":".to_string())]),
+            parse(r#"{"a"}"#)
+        )
+    }
+
+    #[test]
+    fn pass_valid_object() {
+        let json = r#"
+            {
+                "a": null,
+                "b": {
+                    "c": null
+                }
+            }
+        "#;
+        let mut obj = HashMap::<String, Value>::new();
+        obj.insert("a".to_string(), Value::Null);
+        let mut b = HashMap::<String, Value>::new();
+        b.insert("c".to_string(), Value::Null);
+        obj.insert("b".to_string(), Value::Object(b));
+        assert_eq!(Ok(Value::Object(obj)), parse(json))
     }
 }

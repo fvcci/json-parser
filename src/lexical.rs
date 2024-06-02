@@ -142,7 +142,7 @@ mod tests {
         fn fail_on_multiple_quotes_in_one_token() {
             let json = r#"
                 "d"fds"potato"
-        "#;
+            "#;
             let expected = vec!["\"d\"", "fds", "\"potato\""];
             assert_eq!(expected, tokenize_into_strings(json));
         }
