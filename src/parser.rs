@@ -20,6 +20,86 @@ pub enum Error {
     MatchingOpeningPairNotFound(String),
 }
 
+struct EndSequenceItemStatus<'a> {
+    reached_end: bool,
+    next_token: &'a [lexical::Token],
+    error_opt: Option<Error>,
+}
+
+fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequenceItemStatus {
+    match tokens {
+        [] => EndSequenceItemStatus {
+            reached_end: true,
+            next_token: &[],
+            error_opt: Some(Error::UnexpectedEndOfFile(format!(
+                "Expected ',' or '{end}'"
+            ))),
+        },
+        [lexical::Token::Punctuation(',')] => EndSequenceItemStatus {
+            reached_end: true,
+            next_token: &[],
+            error_opt: Some(Error::UnexpectedEndOfFile(format!("Expected '{end}'"))),
+        },
+        [lexical::Token::Punctuation(','), possible_end, ..]
+            if *possible_end == lexical::Token::Punctuation(end) =>
+        {
+            EndSequenceItemStatus {
+                reached_end: true,
+                next_token: &tokens[2..],
+                error_opt: Some(Error::Expected("value".to_string())),
+            }
+        }
+        [lexical::Token::Punctuation(','), ..] => EndSequenceItemStatus {
+            reached_end: false,
+            next_token: &tokens[1..],
+            error_opt: None,
+        },
+        [possible_end, ..] if *possible_end == lexical::Token::Punctuation(end) => {
+            EndSequenceItemStatus {
+                reached_end: true,
+                next_token: &tokens[1..],
+                error_opt: None,
+            }
+        }
+        [_, ..] => EndSequenceItemStatus {
+            reached_end: false,
+            next_token: tokens,
+            error_opt: Some(Error::Expected(",".to_string())),
+        },
+    }
+}
+
+fn parse_until_comma_or_end(
+    tokens: &[lexical::Token],
+    end: char,
+) -> (&[lexical::Token], Option<Error>) {
+    let mut seen_non_comma_value = false;
+    let mut remaining_tokens = tokens;
+    loop {
+        match remaining_tokens {
+            [] => {
+                break;
+            }
+            [possible_end, ..] if *possible_end == lexical::Token::Punctuation(end) => {
+                break;
+            }
+            [lexical::Token::Punctuation(','), ..] => {
+                break;
+            }
+            _ => {
+                remaining_tokens = &remaining_tokens[1..];
+                seen_non_comma_value = true;
+            }
+        }
+    }
+
+    if seen_non_comma_value {
+        (remaining_tokens, Some(Error::Expected(",".to_string())))
+    } else {
+        (remaining_tokens, None)
+    }
+}
+
 fn parse_object_members(
     tokens: &[lexical::Token],
 ) -> (
@@ -37,19 +117,20 @@ fn parse_object_members(
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
 
-    const END_OF_MEMBERS: lexical::Token = lexical::Token::Punctuation('}');
+    const END_OF_MEMBERS: char = '}';
 
     loop {
         match remaining_tokens {
             [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
-                remaining_tokens = &remaining_tokens[2..];
-                match parse_value(remaining_tokens) {
-                    (Ok(value), next_remaining_tokens) => {
-                        remaining_tokens = next_remaining_tokens;
+                let (parse_value_result, next_remaining_tokens) =
+                    parse_value(&remaining_tokens[2..]);
+                remaining_tokens = next_remaining_tokens;
+
+                match parse_value_result {
+                    Ok(value) => {
                         members.insert(s.as_str().to_string(), value);
                     }
-                    (Err(parse_errors), next_remaining_tokens) => {
-                        remaining_tokens = next_remaining_tokens;
+                    Err(parse_errors) => {
                         errors.extend(parse_errors);
                     }
                 }
@@ -67,57 +148,24 @@ fn parse_object_members(
             }
         }
 
-        let mut seen_non_comma_value = false;
-        loop {
-            match remaining_tokens {
-                [] => {
-                    break;
-                }
-                [END_OF_MEMBERS, ..] => {
-                    break;
-                }
-                [lexical::Token::Punctuation(','), ..] => {
-                    break;
-                }
-                _ => {
-                    remaining_tokens = &remaining_tokens[1..];
-                    seen_non_comma_value = true;
-                }
-            }
-        }
-        if seen_non_comma_value {
-            errors.push(Error::Expected(",".to_string()));
+        let (next_remaining_tokens, error_opt) =
+            parse_until_comma_or_end(remaining_tokens, END_OF_MEMBERS);
+        remaining_tokens = next_remaining_tokens;
+        if let Some(error) = error_opt {
+            errors.push(error);
         }
 
-        // println!("{:?}", remaining_tokens);
-
-        match remaining_tokens {
-            [] => {
-                errors.push(Error::UnexpectedEndOfFile(
-                    "Expected ',' or '}'".to_string(),
-                ));
-                break;
-            }
-            [lexical::Token::Punctuation(',')] => {
-                errors.push(Error::UnexpectedEndOfFile("Expected '}'".to_string()));
-                remaining_tokens = &[];
-                break;
-            }
-            [lexical::Token::Punctuation(','), END_OF_MEMBERS, ..] => {
-                errors.push(Error::Expected("value".to_string()));
-                remaining_tokens = &remaining_tokens[2..];
-                break;
-            }
-            [lexical::Token::Punctuation(','), ..] => {
-                remaining_tokens = &remaining_tokens[1..];
-            }
-            [END_OF_MEMBERS, ..] => {
-                remaining_tokens = &remaining_tokens[1..];
-                break;
-            }
-            [_, ..] => {
-                errors.push(Error::Expected(",".to_string()));
-            }
+        let EndSequenceItemStatus {
+            reached_end,
+            next_token,
+            error_opt,
+        } = parse_sequence_item(remaining_tokens, END_OF_MEMBERS);
+        remaining_tokens = next_token;
+        if let Some(error) = error_opt {
+            errors.push(error);
+        }
+        if reached_end {
+            break;
         }
     }
 
@@ -161,7 +209,7 @@ fn parse_array_elements(
     let mut errors = Vec::<Error>::new();
     let mut remaining_tokens = tokens;
 
-    const END_OF_ELEMENTS: lexical::Token = lexical::Token::Punctuation(']');
+    const END_OF_ELEMENTS: char = ']';
 
     loop {
         match parse_value(remaining_tokens) {
@@ -175,33 +223,17 @@ fn parse_array_elements(
             }
         }
 
-        match remaining_tokens {
-            [] => {
-                errors.push(Error::UnexpectedEndOfFile(
-                    "Expected ',' or ']'".to_string(),
-                ));
-                break;
-            }
-            [lexical::Token::Punctuation(',')] => {
-                errors.push(Error::UnexpectedEndOfFile("Expected ']'".to_string()));
-                remaining_tokens = &[];
-                break;
-            }
-            [lexical::Token::Punctuation(','), END_OF_ELEMENTS, ..] => {
-                errors.push(Error::Expected("value".to_string()));
-                remaining_tokens = &remaining_tokens[2..];
-                break;
-            }
-            [lexical::Token::Punctuation(','), ..] => {
-                remaining_tokens = &remaining_tokens[1..];
-            }
-            [END_OF_ELEMENTS, ..] => {
-                remaining_tokens = &remaining_tokens[1..];
-                break;
-            }
-            [_, ..] => {
-                errors.push(Error::Expected(",".to_string()));
-            }
+        let EndSequenceItemStatus {
+            reached_end,
+            next_token,
+            error_opt,
+        } = parse_sequence_item(remaining_tokens, END_OF_ELEMENTS);
+        remaining_tokens = next_token;
+        if let Some(error) = error_opt {
+            errors.push(error);
+        }
+        if reached_end {
+            break;
         }
     }
 
