@@ -26,7 +26,10 @@ struct EndSequenceItemStatus<'a> {
     error_opt: Option<Error>,
 }
 
-fn parse_sequence_item<'a>(tokens: &'a [lexical::Token], end: char) -> EndSequenceItemStatus<'a> {
+fn parse_sequence_separator<'a>(
+    tokens: &'a [lexical::Token],
+    end: char,
+) -> EndSequenceItemStatus<'a> {
     match tokens {
         [] => EndSequenceItemStatus {
             reached_end: true,
@@ -161,7 +164,7 @@ fn parse_object_members(
             reached_end,
             next_token,
             error_opt,
-        } = parse_sequence_item(remaining_tokens, END_OF_MEMBERS);
+        } = parse_sequence_separator(remaining_tokens, END_OF_MEMBERS);
         remaining_tokens = next_token;
         if let Some(error) = error_opt {
             errors.push(error);
@@ -231,7 +234,7 @@ fn parse_array_elements(
             reached_end,
             next_token,
             error_opt,
-        } = parse_sequence_item(remaining_tokens, END_OF_ELEMENTS);
+        } = parse_sequence_separator(remaining_tokens, END_OF_ELEMENTS);
         remaining_tokens = next_token;
         if let Some(error) = error_opt {
             errors.push(error);
