@@ -149,6 +149,7 @@ fn parse_object_members(
                 errors.push(Error::Expected("object key".to_string()));
             }
             _ => {
+                println!("{tokens:?}");
                 errors.push(Error::Expected("object member".to_string()));
             }
         }
@@ -187,7 +188,7 @@ fn parse_object(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexi
             Err(vec![Error::UnexpectedEndOfFile("Expected '}'".to_string())]),
             &[],
         ),
-        [lexical::Token::Punctuation('{'), lexical::Token::Punctuation('}')] => {
+        [lexical::Token::Punctuation('{'), lexical::Token::Punctuation('}'), ..] => {
             (Ok(Value::Object(HashMap::new())), &tokens[2..])
         }
         [lexical::Token::Punctuation('{'), ..] => {
@@ -257,7 +258,7 @@ fn parse_array(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexic
             Err(vec![Error::UnexpectedEndOfFile("Expected ']'".to_string())]),
             &[],
         ),
-        [lexical::Token::Punctuation('['), lexical::Token::Punctuation(']')] => {
+        [lexical::Token::Punctuation('['), lexical::Token::Punctuation(']'), ..] => {
             (Ok(Value::Array(Vec::new())), &tokens[2..])
         }
         [lexical::Token::Punctuation('['), ..] => {
@@ -448,16 +449,56 @@ mod tests {
         let json = r#"
             {
                 "a": null,
-                "b": {
-                    "c": null
-                }
+                "b": [
+                    null,
+                    {}
+                ]
             }
         "#;
-        let mut obj = HashMap::<String, Value>::new();
-        obj.insert("a".to_string(), Value::Null);
-        let mut b = HashMap::<String, Value>::new();
-        b.insert("c".to_string(), Value::Null);
-        obj.insert("b".to_string(), Value::Object(b));
-        assert_eq!(Ok(Value::Object(obj)), parse(json))
+        let obj = Value::Object(
+            vec![
+                ("a".to_string(), Value::Null),
+                (
+                    "b".to_string(),
+                    Value::Array(vec![Value::Null, Value::Object(HashMap::new())]),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(Ok(obj), parse(json))
+    }
+
+    fn time_test(bytes_to_parse: usize, process: impl Fn()) {
+        let start_time = std::time::Instant::now();
+        process();
+        let end_time = std::time::Instant::now();
+
+        let mbs = bytes_to_parse as f64 / 1_000_000.0;
+        let mbps = mbs / (end_time - start_time).as_secs_f64();
+
+        println!("Parsing speed: {mbps:.2} MB/s");
+    }
+
+    #[ignore]
+    #[test]
+    fn pass_canada_json() {
+        let contents = fs::read_to_string("tests/canada.json")
+            .expect("Should have been able to read the file");
+        time_test(contents.len() * 1000, || match parse(contents.as_str()) {
+            Ok(_) => {}
+            Err(error) => panic!("error: {:?}", error[0]),
+        });
+    }
+
+    #[ignore]
+    #[test]
+    fn pass_twitter_json() {
+        let contents = fs::read_to_string("tests/twitter.json")
+            .expect("Should have been able to read the file");
+        time_test(contents.len() * 1000, || match parse(contents.as_str()) {
+            Ok(_) => {}
+            Err(error) => panic!("error: {:?}", error[0]),
+        });
     }
 }
