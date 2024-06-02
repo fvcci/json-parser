@@ -116,29 +116,32 @@ impl Token {
 
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
-    let mut tokens = Vec::<String>::new();
+    let mut tokens = Vec::<char>::new();
     let mut chars = possible_json.chars();
 
     while let Some(c) = chars.next() {
         if c == '"' {
             is_in_quotes = !is_in_quotes;
-            tokens.push(c.to_string());
+            tokens.push(c);
         } else if is_in_quotes && c == '\\' {
-            tokens.push("\\".to_string());
+            tokens.push('\\');
             if let Some(c) = chars.next() {
-                tokens.push(c.to_string());
+                tokens.push(c);
             }
         } else if is_in_quotes && c.is_whitespace() {
-            tokens.push('\0'.to_string());
+            tokens.push('\0');
         } else if !is_in_quotes && Token::is_punctuation(&c) {
-            tokens.push(format!(" {c} "));
+            tokens.push(' ');
+            tokens.push(c);
+            tokens.push(' ');
         } else {
-            tokens.push(c.to_string());
+            tokens.push(c);
         }
     }
 
     tokens
-        .join("")
+        .iter()
+        .collect::<String>()
         .split_whitespace()
         .map(|x| x.replace("\0", " ").to_string())
         .collect()
