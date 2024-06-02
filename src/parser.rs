@@ -480,7 +480,6 @@ mod tests {
         println!("Parsing speed: {mbps:.2} MB/s");
     }
 
-    #[ignore]
     #[test]
     fn pass_canada_json() {
         let contents = fs::read_to_string("tests/canada.json")
@@ -491,7 +490,6 @@ mod tests {
         });
     }
 
-    #[ignore]
     #[test]
     fn pass_twitter_json() {
         let contents = fs::read_to_string("tests/twitter.json")
