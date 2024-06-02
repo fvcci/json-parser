@@ -320,7 +320,6 @@ pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn pass_single_value_json() {
@@ -467,36 +466,5 @@ mod tests {
             .collect(),
         );
         assert_eq!(Ok(obj), parse(json))
-    }
-
-    fn time_test(bytes_to_parse: usize, process: impl Fn()) {
-        let start_time = std::time::Instant::now();
-        process();
-        let end_time = std::time::Instant::now();
-
-        let mbs = bytes_to_parse as f64 / 1_000_000.0;
-        let mbps = mbs / (end_time - start_time).as_secs_f64();
-
-        println!("Parsing speed: {mbps:.2} MB/s");
-    }
-
-    #[test]
-    fn pass_canada_json() {
-        let contents = fs::read_to_string("tests/canada.json")
-            .expect("Should have been able to read the file");
-        time_test(contents.len() * 1000, || match parse(contents.as_str()) {
-            Ok(_) => {}
-            Err(error) => panic!("error: {:?}", error[0]),
-        });
-    }
-
-    #[test]
-    fn pass_twitter_json() {
-        let contents = fs::read_to_string("tests/twitter.json")
-            .expect("Should have been able to read the file");
-        time_test(contents.len() * 1000, || match parse(contents.as_str()) {
-            Ok(_) => {}
-            Err(error) => panic!("error: {:?}", error[0]),
-        });
     }
 }

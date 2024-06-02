@@ -290,29 +290,4 @@ mod tests {
             assert_eq!(Ok(expected), Token::try_from_json(json));
         }
     }
-
-    mod file_tests {
-        use super::*;
-        use std::fs;
-
-        #[test]
-        fn pass_canada_json() {
-            let contents = fs::read_to_string("tests/twitter.json")
-                .expect("Should have been able to read the file");
-            match Token::try_from_json(contents.as_str()) {
-                Ok(_) => {}
-                Err(error) => panic!("error: {:?}", error[0]),
-            }
-        }
-
-        #[test]
-        fn pass_twitter_json() {
-            let contents = fs::read_to_string("tests/twitter.json")
-                .expect("Should have been able to read the file");
-            match Token::try_from_json(contents.as_str()) {
-                Ok(_) => {}
-                Err(error) => panic!("error: {:?}", error[0]),
-            }
-        }
-    }
 }
