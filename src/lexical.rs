@@ -83,7 +83,7 @@ impl Token {
 
         let mut tokens = Vec::<Token>::new();
         let mut errors = Vec::<Error>::new();
-        let mut line_number = 0usize;
+        let mut line_number = 1usize;
         for token in token_strings {
             if token == "\n" {
                 line_number += 1;
@@ -205,15 +205,9 @@ mod tests {
 
         #[test]
         fn fail_space_separated_garbage() {
-            let expected: Vec<LiteralError> = vec![
-                LiteralError::ExpectedLiteral(
-                    "this".to_string(),
-                    "Expected a JSON object, array, or literal".to_string(),
-                ),
-                LiteralError::ExpectedLiteral(
-                    "garbage".to_string(),
-                    "Expected a JSON object, array, or literal".to_string(),
-                ),
+            let expected = vec![
+                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedToken, 1),
             ];
             let json = "this garbage";
             assert_eq!(Err(expected), Token::try_from_json(json));
@@ -224,27 +218,24 @@ mod tests {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec![LiteralError::InvalidString(
-                "\"d\"fds\"potato\"".to_string(),
-                "Invalid String".to_string(),
-            )];
+            let expected = vec![Error::new(ErrorCode::ExpectedDoubleQuote, 2)];
             assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
         fn fail_on_unmatched_quotation() {
             let json = r#""fds"#;
-            let expected = vec![LiteralError::InvalidString(
-                "\"fds".to_string(),
-                "String has unmatched quotation".to_string(),
-            )];
+            let expected = vec![Error::new(ErrorCode::ExpectedDoubleQuote, 1)];
             assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
         fn fail_on_invalid_number() {
             let json = r#"11.3de2"#;
-            let expected = vec![LiteralError::InvalidNumber("11.3de2".to_string())];
+            let expected = vec![Error::new(
+                ErrorCode::InvalidNumber("11.3de2".to_string()),
+                1,
+            )];
             assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
