@@ -1,9 +1,4 @@
-#[derive(Debug, PartialEq)]
-pub enum LiteralError {
-    ExpectedLiteral(String, String),
-    InvalidString(String, String),
-    InvalidNumber(String),
-}
+use crate::errors::{Error, ErrorCode};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -21,7 +16,7 @@ impl Token {
         PUNCTUATIONS.contains(&c)
     }
 
-    fn try_from_string(possible_string: &str) -> Result<Token, LiteralError> {
+    fn try_from_string(possible_string: &str, line_number: usize) -> Result<Token, Error> {
         assert!(!possible_string.is_empty());
 
         let mut chars = possible_string.chars().peekable();
@@ -39,20 +34,12 @@ impl Token {
             }
         }
 
-        if num_quotations % 2 == 1 {
-            return Err(LiteralError::InvalidString(
-                possible_string.to_string(),
-                "String has unmatched quotation".to_string(),
-            ));
-        }
-
         let first = possible_string.chars().next().unwrap();
+        assert!(first == '"');
+
         let last = possible_string.chars().last().unwrap();
-        if possible_string.len() == 1 || num_quotations != 2 || first != '"' || last != '"' {
-            Err(LiteralError::InvalidString(
-                possible_string.to_string(),
-                "Invalid String".to_string(),
-            ))
+        if possible_string.len() == 1 || num_quotations != 2 || last != '"' {
+            Err(Error::new(ErrorCode::ExpectedDoubleQuote, line_number))
         } else {
             Ok(Token::String(
                 possible_string[1..possible_string.len() - 1].to_string(),
@@ -60,21 +47,19 @@ impl Token {
         }
     }
 
-    fn try_from_number(possible_string: &str) -> Result<Token, LiteralError> {
+    fn try_from_number(possible_string: &str, line_number: usize) -> Result<Token, Error> {
         assert!(!possible_string.is_empty());
         match possible_string.parse::<f64>() {
             Ok(n) => Ok(Token::Number(n)),
-            Err(_) => Err(LiteralError::InvalidNumber(possible_string.to_string())),
+            Err(_) => Err(Error::new(
+                ErrorCode::InvalidNumber(possible_string.to_string()),
+                line_number,
+            )),
         }
     }
 
-    fn try_from_token(token: &str) -> Result<Token, LiteralError> {
-        if token.is_empty() {
-            return Err(LiteralError::ExpectedLiteral(
-                token.to_string(),
-                "Nothing to parse".to_string(),
-            ));
-        }
+    fn try_from_token(token: &str, line_number: usize) -> Result<Token, Error> {
+        assert!(!token.is_empty());
 
         let c = token.chars().next().unwrap();
         if Token::is_punctuation(&c) {
@@ -86,25 +71,26 @@ impl Token {
             ('n', "null") => Ok(Token::Null),
             ('f', "false") => Ok(Token::Bool(false)),
             ('t', "true") => Ok(Token::Bool(true)),
-            ('"', _) => Token::try_from_string(token),
-            ('-', _) => Token::try_from_number(token),
-            ('0'..='9', _) => Token::try_from_number(token),
-            _ => Err(LiteralError::ExpectedLiteral(
-                token.to_string(),
-                "Expected a JSON object, array, or literal".to_string(),
-            )),
+            ('"', _) => Token::try_from_string(token, line_number),
+            ('-', _) => Token::try_from_number(token, line_number),
+            ('0'..='9', _) => Token::try_from_number(token, line_number),
+            _ => Err(Error::new(ErrorCode::ExpectedToken, line_number)),
         }
     }
 
-    pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<LiteralError>> {
+    pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<Error>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
         let mut tokens = Vec::<Token>::new();
-        let mut errors = Vec::<LiteralError>::new();
+        let mut errors = Vec::<Error>::new();
+        let mut line_number = 0usize;
         for token in token_strings {
-            match Token::try_from_token(&token) {
+            if token == "\n" {
+                line_number += 1;
+            }
+            match Token::try_from_token(&token, line_number) {
                 Ok(t) => tokens.push(t),
-                Err(literal_error) => errors.push(literal_error),
+                Err(error) => errors.push(error),
             }
         }
 

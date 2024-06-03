@@ -3,6 +3,7 @@ use std::{fmt, fmt::Display};
 #[derive(Debug, PartialEq)]
 pub enum ErrorCode {
     ExpectedToken,
+    ExpectedDoubleQuote,
     InvalidNumber(String),
 }
 
@@ -12,6 +13,7 @@ impl Display for ErrorCode {
             ErrorCode::ExpectedToken => {
                 f.write_str("Expected a JSON object, array, string, number, bool, or null.")
             }
+            ErrorCode::ExpectedDoubleQuote => f.write_str("Expected '\"'"),
             ErrorCode::InvalidNumber(value) => write!(f, "Invalid number: {value}"),
         }
     }
