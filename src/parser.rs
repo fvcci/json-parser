@@ -281,6 +281,7 @@ fn parse_value(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexic
     }
 
     let value = match &tokens[0] {
+        lexical::Token::NewLine => Ok(Value::Null),
         lexical::Token::Null => Ok(Value::Null),
         lexical::Token::Bool(val) => Ok(Value::Bool(*val)),
         lexical::Token::String(val) => Ok(Value::String((*val).as_str().to_string())),

@@ -7,6 +7,7 @@ pub enum LiteralError {
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
+    NewLine,
     Null,
     Bool(bool),
     String(String),
@@ -81,6 +82,7 @@ impl Token {
         }
 
         match (c, token) {
+            ('\n', _) => Ok(Token::NewLine),
             ('n', "null") => Ok(Token::Null),
             ('f', "false") => Ok(Token::Bool(false)),
             ('t', "true") => Ok(Token::Bool(true)),
@@ -120,22 +122,33 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut chars = possible_json.chars();
 
     while let Some(c) = chars.next() {
-        if c == '"' {
-            is_in_quotes = !is_in_quotes;
-            tokens.push(c);
-        } else if is_in_quotes && c == '\\' {
-            tokens.push('\\');
-            if let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                is_in_quotes = !is_in_quotes;
                 tokens.push(c);
             }
-        } else if is_in_quotes && c.is_whitespace() {
-            tokens.push('\0');
-        } else if !is_in_quotes && Token::is_punctuation(&c) {
-            tokens.push(' ');
-            tokens.push(c);
-            tokens.push(' ');
-        } else {
-            tokens.push(c);
+            '\\' if is_in_quotes => {
+                tokens.push('\\');
+                if let Some(c) = chars.next() {
+                    tokens.push(c);
+                }
+            }
+            '\n' => {
+                tokens.push(' ');
+                tokens.push('\0');
+                tokens.push(' ');
+            }
+            c if is_in_quotes && c.is_whitespace() => {
+                tokens.push('\0');
+            }
+            c if !is_in_quotes && Token::is_punctuation(&c) => {
+                tokens.push(' ');
+                tokens.push(c);
+                tokens.push(' ');
+            }
+            _ => {
+                tokens.push(c);
+            }
         }
     }
 
@@ -143,7 +156,13 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
         .iter()
         .collect::<String>()
         .split_whitespace()
-        .map(|x| x.replace("\0", " ").to_string())
+        .map(|x| {
+            if x == "\0" {
+                "\n".to_string()
+            } else {
+                x.replace("\0", " ").to_string()
+            }
+        })
         .collect()
 }
 
@@ -165,7 +184,7 @@ mod tests {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec!["\"d\"", "fds", "\"potato\""];
+            let expected = vec!["\n", "\"d\"", "fds", "\"potato\"", "\n"];
             assert_eq!(expected, tokenize_into_strings(json));
         }
 
