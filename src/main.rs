@@ -1,6 +1,6 @@
 mod errors;
 mod lexical;
-mod parser;
+mod parsing;
 use std::fs;
 
 fn time_test(test: &str, file_size_bytes: u64, process: impl Fn()) {
@@ -33,7 +33,7 @@ fn read_canada_json() {
     time_test(
         "read_canada_json",
         file_size_bytes,
-        || match parser::parse(contents_str) {
+        || match parsing::parse(contents_str) {
             Ok(json) => {
                 // println!("{json:#?}");
             }
@@ -48,7 +48,7 @@ fn read_twitter_json() {
     time_test(
         "read_twitter_json",
         file_size_bytes,
-        || match parser::parse(contents_str) {
+        || match parsing::parse(contents_str) {
             Ok(json) => {
                 // println!("{json:#?}");
             }
