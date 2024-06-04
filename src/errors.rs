@@ -4,9 +4,13 @@ use std::{fmt, fmt::Display};
 pub enum ErrorCode {
     ExpectedToken,
     ExpectedDoubleQuote,
+    ExpectedColon,
+    ExpectedCommaOrEndWhileParsing(char),
+    KeyMustBeAString,
     InvalidNumber(String),
-    EndOfFileWhileParsingObject,
-    EndOfFileWhileParsingList,
+    EndOfFileExpected,
+    EndOfFileWhileParsing(char),
+    EndOfFileWhileParsingValue,
 }
 
 impl Display for ErrorCode {
@@ -16,10 +20,22 @@ impl Display for ErrorCode {
                 f.write_str("Expected a JSON object, array, string, number, bool, or null.")
             }
             ErrorCode::ExpectedDoubleQuote => f.write_str("Expected '\"'"),
+            ErrorCode::ExpectedColon => f.write_str("Expected ':'"),
+            ErrorCode::ExpectedCommaOrEndWhileParsing(end) => match end {
+                ']' => f.write_str("Expected ',' or ']' while parsing array"),
+                '}' => f.write_str("Expected ',' or '}' whiel parsing object"),
+                _ => panic!("Only arrays or objects are supported"),
+            },
+            ErrorCode::KeyMustBeAString => f.write_str("Key must be a string"),
             ErrorCode::InvalidNumber(value) => write!(f, "Invalid number: {value}"),
-            ErrorCode::EndOfFileWhileParsingList => f.write_str("End of file while parsing a list"),
-            ErrorCode::EndOfFileWhileParsingObject => {
-                f.write_str("End of file while parsing an object")
+            ErrorCode::EndOfFileWhileParsing(c) => match c {
+                ']' => f.write_str("End of file while parsing a list"),
+                '}' => f.write_str("End of file while parsing an object"),
+                _ => panic!("Only arrays or objects are supported"),
+            },
+            ErrorCode::EndOfFileExpected => f.write_str("End of file expected"),
+            ErrorCode::EndOfFileWhileParsingValue => {
+                f.write_str("End of file while parsing a value")
             }
         }
     }

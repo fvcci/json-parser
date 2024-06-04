@@ -33,7 +33,7 @@ fn read_canada_json() {
     time_test(
         "read_canada_json",
         file_size_bytes,
-        || match parsing::parse(contents_str) {
+        || match parsing::Parser::parse(contents_str) {
             Ok(json) => {
                 // println!("{json:#?}");
             }
@@ -48,7 +48,7 @@ fn read_twitter_json() {
     time_test(
         "read_twitter_json",
         file_size_bytes,
-        || match parsing::parse(contents_str) {
+        || match parsing::Parser::parse(contents_str) {
             Ok(json) => {
                 // println!("{json:#?}");
             }
