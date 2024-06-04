@@ -53,7 +53,10 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        match &self.tokens[0] {
+        let token = &self.tokens[0];
+        self.tokens = &self.tokens[1..];
+
+        match token {
             lexical::Token::NewLine => {
                 self.line_number += 1;
                 self.tokens = &self.tokens[1..];

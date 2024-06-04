@@ -138,7 +138,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
         }
     }
 
-    tokens
+    let a = tokens
         .iter()
         .collect::<String>()
         .split_whitespace()
@@ -149,8 +149,8 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                 x.replace("\0", " ").to_string()
             }
         })
-        .filter(|x| x != "\n") // TODO temporary
-        .collect()
+        .collect();
+    a
 }
 
 #[cfg(test)]
@@ -165,13 +165,12 @@ mod tests {
             assert_eq!(vec!["this", "is", "garbage"], tokenize_into_strings(json));
         }
 
-        #[ignore]
         #[test]
         fn fail_on_multiple_quotes_in_one_token() {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec!["\n", "\"d\"", "fds", "\"potato\"", "\n"];
+            let expected = vec!["\n", "\"d\"fds\"potato\"", "\n"];
             assert_eq!(expected, tokenize_into_strings(json));
         }
 
