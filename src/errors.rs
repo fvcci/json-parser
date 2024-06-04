@@ -29,12 +29,4 @@ impl Error {
     pub fn new(code: ErrorCode, line: usize) -> Self {
         Error { code, line }
     }
-
-    pub fn get_line(&self) -> usize {
-        self.line
-    }
-
-    pub fn get_code(&self) -> &ErrorCode {
-        &self.code
-    }
 }

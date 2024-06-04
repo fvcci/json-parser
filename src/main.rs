@@ -1,3 +1,4 @@
+mod errors;
 mod lexical;
 mod parser;
 use std::fs;

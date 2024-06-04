@@ -149,6 +149,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                 x.replace("\0", " ").to_string()
             }
         })
+        .filter(|x| x != "\n")
         .collect()
 }
 

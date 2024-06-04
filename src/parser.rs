@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::lexical;
+use crate::{errors, lexical};
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -14,11 +14,15 @@ pub enum Value {
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    LiteralError(lexical::LiteralError),
+    LiteralError(errors::Error),
     UnexpectedEndOfFile(String),
     Expected(String),
     MatchingOpeningPairNotFound(String),
 }
+
+// struct Parser {
+//     next_token: &'a [lexical::Token],
+// }
 
 struct EndSequenceItemStatus<'a> {
     reached_end: bool,
@@ -281,7 +285,6 @@ fn parse_value(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexic
     }
 
     let value = match &tokens[0] {
-        lexical::Token::NewLine => Ok(Value::Null),
         lexical::Token::Null => Ok(Value::Null),
         lexical::Token::Bool(val) => Ok(Value::Bool(*val)),
         lexical::Token::String(val) => Ok(Value::String((*val).as_str().to_string())),
@@ -299,6 +302,7 @@ fn parse_value(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexic
             )]),
             a => panic!("{a} is not a valid punctuation in JSON"),
         },
+        invalid_token => panic!("Invalid token value: {invalid_token:?}"),
     };
 
     (value, &tokens[1..])
@@ -307,6 +311,7 @@ fn parse_value(tokens: &[lexical::Token]) -> (Result<Value, Vec<Error>>, &[lexic
 pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
     let tokens = lexical::Token::try_from_json(json)
         .map_err(|x| x.into_iter().map(Error::LiteralError).collect::<Vec<_>>())?;
+    println!("{tokens:?}");
     match parse_value(&tokens[..]) {
         (Err(mut errors), [_, ..]) => {
             errors.push(Error::Expected("end of file".to_string()));
@@ -336,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_array() {
+    fn pass_valid_array() {
         let json = r#"
             [
                 false, "a", 1.0,
