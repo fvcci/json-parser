@@ -5,6 +5,8 @@ pub enum ErrorCode {
     ExpectedToken,
     ExpectedDoubleQuote,
     InvalidNumber(String),
+    EndOfFileWhileParsingObject,
+    EndOfFileWhileParsingList,
 }
 
 impl Display for ErrorCode {
@@ -15,6 +17,10 @@ impl Display for ErrorCode {
             }
             ErrorCode::ExpectedDoubleQuote => f.write_str("Expected '\"'"),
             ErrorCode::InvalidNumber(value) => write!(f, "Invalid number: {value}"),
+            ErrorCode::EndOfFileWhileParsingList => f.write_str("End of file while parsing a list"),
+            ErrorCode::EndOfFileWhileParsingObject => {
+                f.write_str("End of file while parsing an object")
+            }
         }
     }
 }
