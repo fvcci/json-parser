@@ -11,9 +11,47 @@ pub enum Token {
 }
 
 impl Token {
-    fn is_punctuation(c: &char) -> bool {
-        const PUNCTUATIONS: &'static [char] = &[',', ':', '{', '}', '[', ']'];
-        PUNCTUATIONS.contains(&c)
+    pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<Error>> {
+        let token_strings = tokenize_into_strings(&possible_json);
+
+        let mut tokens = Vec::<Token>::new();
+        let mut errors = Vec::<Error>::new();
+        let mut line_number = 1usize;
+        for token in token_strings {
+            if token == "\n" {
+                line_number += 1;
+            }
+            match Token::try_from_token(&token, line_number) {
+                Ok(t) => tokens.push(t),
+                Err(error) => errors.push(error),
+            }
+        }
+
+        if errors.len() > 0 {
+            Err(errors)
+        } else {
+            Ok(tokens)
+        }
+    }
+
+    fn try_from_token(token: &str, line_number: usize) -> Result<Token, Error> {
+        assert!(!token.is_empty());
+
+        let c = token.chars().next().unwrap();
+        if Token::is_punctuation(&c) {
+            return Ok(Token::Punctuation(c));
+        }
+
+        match (c, token) {
+            ('\n', _) => Ok(Token::NewLine),
+            ('n', "null") => Ok(Token::Null),
+            ('f', "false") => Ok(Token::Bool(false)),
+            ('t', "true") => Ok(Token::Bool(true)),
+            ('"', _) => Token::try_from_string(token, line_number),
+            ('-', _) => Token::try_from_number(token, line_number),
+            ('0'..='9', _) => Token::try_from_number(token, line_number),
+            _ => Err(Error::new(ErrorCode::ExpectedToken, line_number)),
+        }
     }
 
     fn try_from_string(possible_string: &str, line_number: usize) -> Result<Token, Error> {
@@ -58,47 +96,9 @@ impl Token {
         }
     }
 
-    fn try_from_token(token: &str, line_number: usize) -> Result<Token, Error> {
-        assert!(!token.is_empty());
-
-        let c = token.chars().next().unwrap();
-        if Token::is_punctuation(&c) {
-            return Ok(Token::Punctuation(c));
-        }
-
-        match (c, token) {
-            ('\n', _) => Ok(Token::NewLine),
-            ('n', "null") => Ok(Token::Null),
-            ('f', "false") => Ok(Token::Bool(false)),
-            ('t', "true") => Ok(Token::Bool(true)),
-            ('"', _) => Token::try_from_string(token, line_number),
-            ('-', _) => Token::try_from_number(token, line_number),
-            ('0'..='9', _) => Token::try_from_number(token, line_number),
-            _ => Err(Error::new(ErrorCode::ExpectedToken, line_number)),
-        }
-    }
-
-    pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<Error>> {
-        let token_strings = tokenize_into_strings(&possible_json);
-
-        let mut tokens = Vec::<Token>::new();
-        let mut errors = Vec::<Error>::new();
-        let mut line_number = 1usize;
-        for token in token_strings {
-            if token == "\n" {
-                line_number += 1;
-            }
-            match Token::try_from_token(&token, line_number) {
-                Ok(t) => tokens.push(t),
-                Err(error) => errors.push(error),
-            }
-        }
-
-        if errors.len() > 0 {
-            Err(errors)
-        } else {
-            Ok(tokens)
-        }
+    fn is_punctuation(c: &char) -> bool {
+        const PUNCTUATIONS: &'static [char] = &[',', ':', '{', '}', '[', ']'];
+        PUNCTUATIONS.contains(&c)
     }
 }
 
@@ -138,7 +138,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
         }
     }
 
-    let a = tokens
+    tokens
         .iter()
         .collect::<String>()
         .split_whitespace()
@@ -149,8 +149,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                 x.replace("\0", " ").to_string()
             }
         })
-        .collect();
-    a
+        .collect()
 }
 
 #[cfg(test)]
