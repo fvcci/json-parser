@@ -53,23 +53,33 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        let token = &self.tokens[0];
-        self.tokens = &self.tokens[1..];
-
-        match token {
+        match &self.tokens[0] {
             lexical::Token::NewLine => {
                 self.line_number += 1;
                 self.tokens = &self.tokens[1..];
                 self.parse_value()
             }
-            lexical::Token::Null => Some(Value::Null),
-            lexical::Token::Bool(val) => Some(Value::Bool(*val)),
-            lexical::Token::String(val) => Some(Value::String(val.to_string())),
-            lexical::Token::Number(val) => Some(Value::Number(*val)),
+            lexical::Token::Null => {
+                self.tokens = &self.tokens[1..];
+                Some(Value::Null)
+            }
+            lexical::Token::Bool(val) => {
+                self.tokens = &self.tokens[1..];
+                Some(Value::Bool(*val))
+            }
+            lexical::Token::String(val) => {
+                self.tokens = &self.tokens[1..];
+                Some(Value::String(val.to_string()))
+            }
+            lexical::Token::Number(val) => {
+                self.tokens = &self.tokens[1..];
+                Some(Value::Number(*val))
+            }
             lexical::Token::Punctuation(c) => match *c {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
                 ',' | '}' | ']' => {
+                    self.tokens = &self.tokens[1..];
                     self.errors
                         .push(Error::new(ErrorCode::ExpectedToken, self.line_number));
                     None
@@ -82,6 +92,7 @@ impl<'a> Parser<'a> {
     fn parse_array(&mut self) -> Option<Value> {
         match self.tokens {
             [lexical::Token::Punctuation('[')] => {
+                self.tokens = &[];
                 self.errors.push(Error::new(
                     ErrorCode::EndOfFileWhileParsing(']'),
                     self.line_number,
@@ -92,7 +103,10 @@ impl<'a> Parser<'a> {
                 self.tokens = &self.tokens[2..];
                 Some(Value::Array(Vec::new()))
             }
-            [lexical::Token::Punctuation('['), ..] => self.parse_array_elements().map(Value::Array),
+            [lexical::Token::Punctuation('['), ..] => {
+                self.tokens = &self.tokens[1..];
+                self.parse_array_elements().map(Value::Array)
+            }
             _ => {
                 panic!("Arrays must start with '['");
             }
@@ -130,6 +144,7 @@ impl<'a> Parser<'a> {
     fn parse_object(&mut self) -> Option<Value> {
         match self.tokens {
             [lexical::Token::Punctuation('{')] => {
+                self.tokens = &[];
                 self.errors.push(Error::new(
                     ErrorCode::EndOfFileWhileParsing('}'),
                     self.line_number,
@@ -141,46 +156,11 @@ impl<'a> Parser<'a> {
                 Some(Value::Object(HashMap::new()))
             }
             [lexical::Token::Punctuation('{'), ..] => {
+                self.tokens = &self.tokens[1..];
                 self.parse_object_members().map(Value::Object)
             }
             _ => {
                 panic!("Objects must start with '{{'");
-            }
-        }
-    }
-
-    fn parse_sequence_separator(&mut self, end: char) -> bool {
-        match self.tokens {
-            [] | [lexical::Token::Punctuation(',')] => {
-                self.tokens = &[];
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing(end),
-                    self.line_number,
-                ));
-                true
-            }
-            [lexical::Token::Punctuation(','), lexical::Token::Punctuation(possible_end), ..]
-                if *possible_end == end =>
-            {
-                self.tokens = &self.tokens[2..];
-                self.errors
-                    .push(Error::new(ErrorCode::ExpectedToken, self.line_number));
-                true
-            }
-            [lexical::Token::Punctuation(','), ..] => {
-                self.tokens = &self.tokens[1..];
-                false
-            }
-            [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
-                self.tokens = &self.tokens[1..];
-                true
-            }
-            [_, ..] => {
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing(end),
-                    self.line_number,
-                ));
-                false
             }
         }
     }
@@ -230,6 +210,42 @@ impl<'a> Parser<'a> {
         }
 
         Some(members)
+    }
+
+    fn parse_sequence_separator(&mut self, end: char) -> bool {
+        match self.tokens {
+            [] | [lexical::Token::Punctuation(',')] => {
+                self.tokens = &[];
+                self.errors.push(Error::new(
+                    ErrorCode::EndOfFileWhileParsing(end),
+                    self.line_number,
+                ));
+                true
+            }
+            [lexical::Token::Punctuation(','), lexical::Token::Punctuation(possible_end), ..]
+                if *possible_end == end =>
+            {
+                self.tokens = &self.tokens[2..];
+                self.errors
+                    .push(Error::new(ErrorCode::ExpectedToken, self.line_number));
+                true
+            }
+            [lexical::Token::Punctuation(','), ..] => {
+                self.tokens = &self.tokens[1..];
+                false
+            }
+            [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
+                self.tokens = &self.tokens[1..];
+                true
+            }
+            [_, ..] => {
+                self.errors.push(Error::new(
+                    ErrorCode::EndOfFileWhileParsing(end),
+                    self.line_number,
+                ));
+                false
+            }
+        }
     }
 
     fn parse_until_comma_or_end(&mut self, end: char) {
