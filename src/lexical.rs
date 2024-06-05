@@ -27,7 +27,7 @@ impl Token {
             }
         }
 
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             Err(errors)
         } else {
             Ok(tokens)
@@ -102,54 +102,106 @@ impl Token {
     }
 }
 
+// fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
+//     let mut is_in_quotes = false;
+//     let mut tokens = Vec::<char>::new();
+//     let mut chars = possible_json.chars();
+
+//     while let Some(c) = chars.next() {
+//         match c {
+//             '"' => {
+//                 is_in_quotes = !is_in_quotes;
+//                 tokens.push(c);
+//             }
+//             '\\' if is_in_quotes => {
+//                 tokens.push('\\');
+//                 if let Some(c) = chars.next() {
+//                     tokens.push(c);
+//                 }
+//             }
+//             '\n' => {
+//                 tokens.push(' ');
+//                 tokens.push('\0');
+//                 tokens.push(' ');
+//             }
+//             c if is_in_quotes && c.is_whitespace() => {
+//                 tokens.push('\0');
+//             }
+//             c if !is_in_quotes && Token::is_punctuation(&c) => {
+//                 tokens.push(' ');
+//                 tokens.push(c);
+//                 tokens.push(' ');
+//             }
+//             _ => {
+//                 tokens.push(c);
+//             }
+//         }
+//     }
+
+//     tokens
+//         .iter()
+//         .collect::<String>()
+//         .split_whitespace()
+//         .map(|x| {
+//             if x == "\0" {
+//                 "\n".to_string()
+//             } else {
+//                 x.replace("\0", " ").to_string()
+//             }
+//         })
+//         .collect()
+// }
+
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
-    let mut tokens = Vec::<char>::new();
+    let mut tokens = vec![String::new()];
     let mut chars = possible_json.chars();
 
     while let Some(c) = chars.next() {
+        let cur_token = tokens.last_mut().unwrap();
         match c {
             '"' => {
                 is_in_quotes = !is_in_quotes;
-                tokens.push(c);
+                cur_token.push(c);
             }
             '\\' if is_in_quotes => {
-                tokens.push('\\');
+                cur_token.push('\\');
                 if let Some(c) = chars.next() {
-                    tokens.push(c);
+                    cur_token.push(c);
                 }
             }
             '\n' => {
-                tokens.push(' ');
-                tokens.push('\0');
-                tokens.push(' ');
+                if !cur_token.is_empty() {
+                    tokens.push('\n'.to_string());
+                } else {
+                    cur_token.push('\n');
+                }
+                tokens.push(String::new());
             }
-            c if is_in_quotes && c.is_whitespace() => {
-                tokens.push('\0');
+            c if !is_in_quotes && c.is_whitespace() => {
+                if !cur_token.is_empty() {
+                    tokens.push(String::new());
+                }
             }
             c if !is_in_quotes && Token::is_punctuation(&c) => {
-                tokens.push(' ');
-                tokens.push(c);
-                tokens.push(' ');
+                if !cur_token.is_empty() {
+                    tokens.push(c.to_string());
+                } else {
+                    cur_token.push(c);
+                }
+                tokens.push(String::new());
             }
             _ => {
-                tokens.push(c);
+                cur_token.push(c);
             }
         }
     }
 
+    if tokens.last_mut().unwrap().is_empty() {
+        tokens.pop();
+    }
+
     tokens
-        .iter()
-        .collect::<String>()
-        .split_whitespace()
-        .map(|x| {
-            if x == "\0" {
-                "\n".to_string()
-            } else {
-                x.replace("\0", " ").to_string()
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]
