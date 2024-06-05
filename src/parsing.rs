@@ -34,7 +34,9 @@ impl<'a> Parser<'a> {
         let value_opt = parser.parse_value();
         if !parser.errors.is_empty() {
             Err(parser.errors)
-        } else if value_opt.is_none() {
+        } else if value_opt.is_none()
+            || !parser.tokens.iter().all(|x| *x == lexical::Token::NewLine)
+        {
             Err(vec![Error::new(
                 ErrorCode::EndOfFileExpected,
                 parser.line_number,
@@ -79,7 +81,6 @@ impl<'a> Parser<'a> {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
                 ',' | '}' | ']' => {
-                    self.tokens = &self.tokens[1..];
                     self.errors
                         .push(Error::new(ErrorCode::ExpectedToken, self.line_number));
                     None
@@ -177,7 +178,6 @@ impl<'a> Parser<'a> {
         }
 
         let mut members = HashMap::<String, Value>::new();
-        let mut errors = Vec::<Error>::new();
 
         loop {
             match self.tokens {
@@ -189,15 +189,25 @@ impl<'a> Parser<'a> {
                 }
                 [_, lexical::Token::Punctuation(':'), ..] => {
                     self.tokens = &self.tokens[2..];
-                    errors.push(Error::new(ErrorCode::KeyMustBeAString, self.line_number));
+                    self.errors
+                        .push(Error::new(ErrorCode::KeyMustBeAString, self.line_number));
+                    self.parse_value();
+                }
+                [lexical::Token::Punctuation(':'), ..] => {
+                    self.tokens = &self.tokens[1..];
+                    self.errors
+                        .push(Error::new(ErrorCode::KeyMustBeAString, self.line_number));
+                    self.parse_value();
                 }
                 [lexical::Token::String(_), ..] => {
                     self.tokens = &self.tokens[1..];
-                    errors.push(Error::new(ErrorCode::ExpectedColon, self.line_number));
+                    self.errors
+                        .push(Error::new(ErrorCode::ExpectedColon, self.line_number));
                 }
                 _ => {
                     self.tokens = &self.tokens[1..];
-                    errors.push(Error::new(ErrorCode::KeyMustBeAString, self.line_number));
+                    self.errors
+                        .push(Error::new(ErrorCode::KeyMustBeAString, self.line_number));
                 }
             }
 
@@ -238,6 +248,9 @@ impl<'a> Parser<'a> {
                 self.tokens = &self.tokens[1..];
                 true
             }
+            [lexical::Token::NewLine, ..] => {
+                panic!("Shouldn't be possible to encounter");
+            }
             [_, ..] => {
                 self.errors.push(Error::new(
                     ErrorCode::EndOfFileWhileParsing(end),
@@ -252,14 +265,19 @@ impl<'a> Parser<'a> {
         let mut seen_non_comma_value = false;
         loop {
             match self.tokens {
-                [] => {
+                [] | [lexical::Token::Punctuation(','), ..] => {
                     break;
                 }
                 [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
                     break;
                 }
-                [lexical::Token::Punctuation(','), ..] => {
-                    break;
+                [lexical::Token::Punctuation(':'), ..] => {
+                    self.tokens = &self.tokens[1..];
+                    self.parse_value();
+                }
+                [lexical::Token::NewLine, ..] => {
+                    self.tokens = &self.tokens[1..];
+                    self.line_number += 1;
                 }
                 _ => {
                     self.tokens = &self.tokens[1..];
@@ -319,47 +337,87 @@ mod tests {
 
     #[test]
     fn fail_missing_comma() {
-        assert_eq!(Err(vec![]), Parser::parse(r#"[false "a"]"#));
+        assert_eq!(
+            Err(vec![Error::new(
+                ErrorCode::ExpectedCommaOrEndWhileParsing(']'),
+                1
+            ),]),
+            Parser::parse(r#"[false "a"]"#)
+        );
     }
 
     #[test]
     fn fail_many_commas() {
-        assert_eq!(Err(vec![]), Parser::parse(r#"[,,]"#));
+        assert_eq!(
+            Err(vec![
+                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedToken, 1)
+            ]),
+            Parser::parse(r#"[,,]"#)
+        );
     }
 
     #[test]
     fn fail_unclosed_array() {
-        assert_eq!(Err(vec![]), Parser::parse("[true"));
+        assert_eq!(
+            Err(vec![Error::new(ErrorCode::EndOfFileWhileParsing(']'), 1),]),
+            Parser::parse("[true")
+        );
     }
 
     #[test]
     fn fail_trailing_comma_array() {
-        assert_eq!(Err(vec![]), Parser::parse("[true,"));
+        assert_eq!(
+            Err(vec![Error::new(ErrorCode::EndOfFileWhileParsing(']'), 1),]),
+            Parser::parse("[true,")
+        );
     }
 
     #[test]
     fn fail_more_than_one_json_value() {
-        assert_eq!(Err(vec![]), Parser::parse("null null"))
+        assert_eq!(
+            Err(vec![Error::new(ErrorCode::EndOfFileExpected, 1)]),
+            Parser::parse("null null")
+        )
     }
 
     #[test]
-    fn fail_unopened_array() {
-        assert_eq!(Err(vec![]), Parser::parse("[false, }]"))
+    fn fail_unopened_object() {
+        assert_eq!(
+            Err(vec![
+                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedCommaOrEndWhileParsing(']'), 1),
+            ]),
+            Parser::parse("[false, }]")
+        )
     }
 
     #[test]
     fn include_elements_errors() {
-        assert_eq!(Err(vec![]), Parser::parse("[[ , false], ]"))
+        assert_eq!(
+            Err(vec![
+                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedToken, 1),
+            ]),
+            Parser::parse("[[ , false], ]")
+        )
     }
 
     #[test]
     fn fail_on_no_key() {
-        assert_eq!(Err(vec![]), Parser::parse(r#"{ : true}"#))
+        assert_eq!(
+            Err(vec![Error::new(ErrorCode::KeyMustBeAString, 1)]),
+            Parser::parse(r#"{ : true}"#)
+        )
     }
 
     #[test]
     fn fail_on_no_semi_colon() {
-        assert_eq!(Err(vec![]), Parser::parse(r#"{"a"}"#))
+        assert_eq!(
+            Err(vec![Error::new(ErrorCode::ExpectedColon, 1),]),
+            Parser::parse(r#"{"a"}"#)
+        )
     }
 
     #[test]
