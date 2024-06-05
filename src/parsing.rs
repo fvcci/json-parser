@@ -47,6 +47,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> Option<Value> {
+        self.parse_new_lines();
+
         if self.tokens.is_empty() {
             self.errors.push(Error::new(
                 ErrorCode::EndOfFileWhileParsingValue,
@@ -56,11 +58,6 @@ impl<'a> Parser<'a> {
         }
 
         match &self.tokens[0] {
-            lexical::Token::NewLine => {
-                self.line_number += 1;
-                self.tokens = &self.tokens[1..];
-                self.parse_value()
-            }
             lexical::Token::Null => {
                 self.tokens = &self.tokens[1..];
                 Some(Value::Null)
@@ -87,6 +84,9 @@ impl<'a> Parser<'a> {
                 }
                 a => panic!("{a} is not a valid punctuation in JSON"),
             },
+            _ => {
+                panic!("Shouldn't be possible to encounter");
+            }
         }
     }
 
@@ -127,6 +127,7 @@ impl<'a> Parser<'a> {
 
         let mut elements = Vec::<Value>::new();
         loop {
+            self.parse_new_lines();
             if let Some(element) = self.parse_value() {
                 elements.push(element);
             }
@@ -180,6 +181,7 @@ impl<'a> Parser<'a> {
         let mut members = HashMap::<String, Value>::new();
 
         loop {
+            self.parse_new_lines();
             match self.tokens {
                 [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
                     self.tokens = &self.tokens[2..];
@@ -223,6 +225,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_sequence_separator(&mut self, end: char) -> bool {
+        self.parse_new_lines();
         match self.tokens {
             [] | [lexical::Token::Punctuation(',')] => {
                 self.tokens = &[];
@@ -264,6 +267,7 @@ impl<'a> Parser<'a> {
     fn parse_until_comma_or_end(&mut self, end: char) {
         let mut seen_non_comma_value = false;
         loop {
+            self.parse_new_lines();
             match self.tokens {
                 [] | [lexical::Token::Punctuation(','), ..] => {
                     break;
@@ -274,10 +278,6 @@ impl<'a> Parser<'a> {
                 [lexical::Token::Punctuation(':'), ..] => {
                     self.tokens = &self.tokens[1..];
                     self.parse_value();
-                }
-                [lexical::Token::NewLine, ..] => {
-                    self.tokens = &self.tokens[1..];
-                    self.line_number += 1;
                 }
                 _ => {
                     self.tokens = &self.tokens[1..];
@@ -291,6 +291,13 @@ impl<'a> Parser<'a> {
                 ErrorCode::ExpectedCommaOrEndWhileParsing(end),
                 self.line_number,
             ));
+        }
+    }
+
+    fn parse_new_lines(&mut self) {
+        while let [lexical::Token::NewLine, ..] = self.tokens {
+            self.line_number += 1;
+            self.tokens = &self.tokens[1..];
         }
     }
 }
