@@ -102,63 +102,102 @@ impl Token {
     }
 }
 
-// fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
-//     let mut is_in_quotes = false;
-//     let mut tokens = Vec::<char>::new();
-//     let mut chars = possible_json.chars();
+// struct Reader<'a> {
+//     chars: Peekable<Chars<'a>>,
+//     is_in_quotes: bool,
+//     line_number: usize,
+//     col_number: usize,
+// }
 
-//     while let Some(c) = chars.next() {
-//         match c {
-//             '"' => {
-//                 is_in_quotes = !is_in_quotes;
-//                 tokens.push(c);
-//             }
-//             '\\' if is_in_quotes => {
-//                 tokens.push('\\');
-//                 if let Some(c) = chars.next() {
-//                     tokens.push(c);
-//                 }
-//             }
-//             '\n' => {
-//                 tokens.push(' ');
-//                 tokens.push('\0');
-//                 tokens.push(' ');
-//             }
-//             c if is_in_quotes && c.is_whitespace() => {
-//                 tokens.push('\0');
-//             }
-//             c if !is_in_quotes && Token::is_punctuation(&c) => {
-//                 tokens.push(' ');
-//                 tokens.push(c);
-//                 tokens.push(' ');
-//             }
-//             _ => {
-//                 tokens.push(c);
-//             }
+// impl<'a> Reader<'a> {
+//     fn new(possible_json: &'a str) -> Reader<'a> {
+//         Reader {
+//             chars: possible_json.chars().peekable(),
+//             is_in_quotes: false,
+//             line_number: 1,
+//             col_number: 1,
 //         }
 //     }
 
-//     tokens
-//         .iter()
-//         .collect::<String>()
-//         .split_whitespace()
-//         .map(|x| {
-//             if x == "\0" {
-//                 "\n".to_string()
-//             } else {
-//                 x.replace("\0", " ").to_string()
+//     fn read_whitespace(&mut self) {
+//         match self.chars.peek() {
+//             Some('\n') | Some('\r') => {
+//                 self.chars.next();
+//                 self.line_number += 1;
+//                 self.col_number += 1;
 //             }
-//         })
-//         .collect()
+//             Some(' ') | Some('\t') => {
+//                 self.chars.next();
+//                 self.col_number += 1;
+//             }
+//             _ => {}
+//         }
+//     }
+
+//     fn peek(&mut self, num_tokens: usize) -> Result<Vec<Token>, Vec<Error>> {
+//         self.read_whitespace();
+
+//         let mut tokens = Vec::<Token>::new();
+//         let mut errors = Vec::<Error>::new();
+//         let mut cur_token = String::new();
+
+//         while let Some(c) = self.chars.next() {
+//             match c {
+//                 '"' => {
+//                     self.is_in_quotes = !self.is_in_quotes;
+//                     cur_token.push(c);
+//                 }
+//                 '\\' if self.is_in_quotes => {
+//                     cur_token.push('\\');
+//                     if let Some(c) = self.chars.next() {
+//                         cur_token.push(c);
+//                     }
+//                 }
+//                 c if !self.is_in_quotes && Token::is_punctuation(&c) => {
+//                     if !cur_token.is_empty() {
+//                         match Token::try_from_token(&cur_token, self.line_number) {
+//                             Ok(val) => tokens.push(val),
+//                             Err(e) => errors.push(e),
+//                         }
+//                         tokens.push(Token::Punctuation(c));
+//                     } else {
+//                         cur_token.push(c);
+//                     }
+//                     cur_token.clear();
+//                 }
+//                 _ => {
+//                     assert!(!c.is_whitespace());
+//                     cur_token.push(c);
+//                 }
+//             }
+
+//             if tokens.len() == num_tokens {
+//                 break;
+//             }
+//         }
+
+//         if !cur_token.is_empty() {
+//             match Token::try_from_token(&cur_token, self.line_number) {
+//                 Ok(val) => tokens.push(val),
+//                 Err(e) => errors.push(e),
+//             }
+//         }
+
+//         if errors.is_empty() {
+//             Ok(tokens)
+//         } else {
+//             Err(errors)
+//         }
+//     }
 // }
 
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
-    let mut tokens = vec![String::new()];
+    let mut tokens = Vec::<String>::new();
+    let mut cur_token = String::new();
     let mut chars = possible_json.chars();
 
     while let Some(c) = chars.next() {
-        let cur_token = tokens.last_mut().unwrap();
         match c {
             '"' => {
                 is_in_quotes = !is_in_quotes;
@@ -170,26 +209,25 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                     cur_token.push(c);
                 }
             }
-            '\n' => {
+            c if !is_in_quotes && Token::is_punctuation(&c) => {
                 if !cur_token.is_empty() {
-                    tokens.push('\n'.to_string());
-                } else {
-                    cur_token.push('\n');
+                    tokens.push(cur_token);
                 }
-                tokens.push(String::new());
+                cur_token = String::new();
+                tokens.push(c.to_string());
+            }
+            '\n' | '\r' if !is_in_quotes => {
+                if !cur_token.is_empty() {
+                    tokens.push(cur_token);
+                }
+                cur_token = String::new();
+                tokens.push(c.to_string());
             }
             c if !is_in_quotes && c.is_whitespace() => {
                 if !cur_token.is_empty() {
-                    tokens.push(String::new());
+                    tokens.push(cur_token);
+                    cur_token = String::new();
                 }
-            }
-            c if !is_in_quotes && Token::is_punctuation(&c) => {
-                if !cur_token.is_empty() {
-                    tokens.push(c.to_string());
-                } else {
-                    cur_token.push(c);
-                }
-                tokens.push(String::new());
             }
             _ => {
                 cur_token.push(c);
@@ -197,8 +235,8 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
         }
     }
 
-    if tokens.last_mut().unwrap().is_empty() {
-        tokens.pop();
+    if !cur_token.is_empty() {
+        tokens.push(cur_token);
     }
 
     tokens
