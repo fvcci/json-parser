@@ -3,6 +3,7 @@ use crate::errors::{Error, ErrorCode};
 #[derive(Debug, PartialEq)]
 pub enum Token {
     NewLine,
+    Whitespace(usize),
     Null,
     Bool(bool),
     String(String),
@@ -43,6 +44,7 @@ impl Token {
         }
 
         match (c, token) {
+            (' ', whitespaces) => Ok(Token::Whitespace(whitespaces.len())),
             ('\n', _) => Ok(Token::NewLine),
             ('n', "null") => Ok(Token::Null),
             ('f', "false") => Ok(Token::Bool(false)),
@@ -195,7 +197,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;
     let mut tokens = Vec::<String>::new();
     let mut cur_token = String::new();
-    let mut chars = possible_json.chars();
+    let mut chars = possible_json.chars().peekable();
 
     while let Some(c) = chars.next() {
         match c {
@@ -209,14 +211,7 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                     cur_token.push(c);
                 }
             }
-            c if !is_in_quotes && Token::is_punctuation(&c) => {
-                if !cur_token.is_empty() {
-                    tokens.push(cur_token);
-                }
-                cur_token = String::new();
-                tokens.push(c.to_string());
-            }
-            '\n' | '\r' if !is_in_quotes => {
+            c if !is_in_quotes && (Token::is_punctuation(&c) || c == '\n' || c == '\r') => {
                 if !cur_token.is_empty() {
                     tokens.push(cur_token);
                 }
@@ -224,6 +219,20 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
                 tokens.push(c.to_string());
             }
             c if !is_in_quotes && c.is_whitespace() => {
+                if !cur_token.is_empty() {
+                    tokens.push(cur_token);
+                    cur_token = String::new();
+                }
+                cur_token.push(' ');
+                while let Some(c) = chars.peek() {
+                    if *c == ' ' || *c == '\t' {
+                        cur_token.push(' ');
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+
                 if !cur_token.is_empty() {
                     tokens.push(cur_token);
                     cur_token = String::new();
@@ -251,7 +260,10 @@ mod tests {
         #[test]
         fn fail_space_separated_garbage() {
             let json = "this is garbage";
-            assert_eq!(vec!["this", "is", "garbage"], tokenize_into_strings(json));
+            assert_eq!(
+                vec!["this", " ", "is", " ", "garbage"],
+                tokenize_into_strings(json)
+            );
         }
 
         #[test]
@@ -259,14 +271,23 @@ mod tests {
             let json = r#"
                 "d"fds"potato"
             "#;
-            let expected = vec!["\n", "\"d\"fds\"potato\"", "\n"];
+            let expected = vec![
+                "\n",
+                "                ",
+                "\"d\"fds\"potato\"",
+                "\n",
+                "            ",
+            ];
             assert_eq!(expected, tokenize_into_strings(json));
         }
 
         #[test]
         fn pass_space_in_string() {
             let json = "\" fjdsoif fds\" fd";
-            assert_eq!(vec!["\" fjdsoif fds\"", "fd"], tokenize_into_strings(json));
+            assert_eq!(
+                vec!["\" fjdsoif fds\"", " ", "fd"],
+                tokenize_into_strings(json)
+            );
         }
 
         #[test]
@@ -339,8 +360,9 @@ mod tests {
 
         #[test]
         fn should_tokenize_on_punctuation() {
-            let json = r#"{"age":30,"is_student":[false]}"#;
+            let json = r#" {"age":30,"is_student":[false]}"#;
             let expected = vec![
+                Token::Whitespace(1),
                 Token::Punctuation('{'),
                 Token::String(String::from("age")),
                 Token::Punctuation(':'),
