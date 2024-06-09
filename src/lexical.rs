@@ -108,7 +108,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    pub fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
+    pub fn next(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
         self.read_in(num_tokens);
         self.buffer
             .drain(..min(self.buffer.len(), num_tokens))
@@ -140,8 +140,10 @@ impl<'a> Reader<'a> {
                         continue;
                     }
 
-                    self.buffer
-                        .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
+                    self.buffer.push(
+                        Token::try_from_token(&cur_token)
+                            .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                    );
                     cur_token.clear();
                     self.buffer.push(Ok(Token::Punctuation(c)));
                 }
@@ -150,8 +152,10 @@ impl<'a> Reader<'a> {
                     if cur_token.is_empty() {
                         continue;
                     }
-                    self.buffer
-                        .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
+                    self.buffer.push(
+                        Token::try_from_token(&cur_token)
+                            .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                    );
                     cur_token.clear();
                 }
                 c => {
@@ -170,13 +174,15 @@ impl<'a> Reader<'a> {
                 self.buffer.len() < num_tokens,
                 "All required tokens must not have been parsed"
             );
-            self.buffer
-                .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
+            self.buffer.push(
+                Token::try_from_token(&cur_token)
+                    .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+            );
         }
     }
 
-    fn create_error(&self) -> Error {
-        Error::new(ErrorCode::ExpectedToken, self.line, self.col)
+    pub fn create_error(&self, code: ErrorCode) -> Error {
+        Error::new(code, self.line, self.col)
     }
 
     fn read_whitespace(&mut self) {
@@ -285,7 +291,7 @@ mod tests {
                     Ok(Token::Punctuation('{')),
                     Ok(Token::String("\"age\"".to_string()))
                 ],
-                reader.take(2)
+                reader.next(2)
             );
 
             assert_eq!(
@@ -300,7 +306,7 @@ mod tests {
                     Ok(Token::Punctuation(']')),
                     Ok(Token::Punctuation('}'))
                 ],
-                reader.take(11)
+                reader.next(11)
             );
         }
 
@@ -311,7 +317,7 @@ mod tests {
 
             assert_eq!(
                 vec![Ok(Token::String(r#""}, \n ""#.to_string()))],
-                reader.take(1)
+                reader.next(1)
             );
         }
     }

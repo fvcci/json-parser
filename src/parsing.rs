@@ -19,8 +19,6 @@ pub struct Parser<'a> {
     tokens: &'a [lexical::Token],
     reader: lexical::Reader<'a>,
     errors: Vec<Error>,
-    line_number: usize,
-    col_number: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -31,19 +29,15 @@ impl<'a> Parser<'a> {
             tokens: &tokens[..],
             reader: lexical::Reader::new(json),
             errors: Vec::<Error>::new(),
-            line_number: 1,
-            col_number: 1,
         };
 
         let value_opt = parser.parse_value();
         if !parser.errors.is_empty() {
             Err(parser.errors)
         } else if value_opt.is_none() || !parser.tokens.iter().all(|x| x.is_whitespace()) {
-            Err(vec![Error::new(
-                ErrorCode::EndOfFileExpected,
-                parser.line_number,
-                parser.col_number,
-            )])
+            Err(vec![parser
+                .reader
+                .create_error(ErrorCode::EndOfFileExpected)])
         } else {
             Ok(value_opt.unwrap())
         }
@@ -52,13 +46,12 @@ impl<'a> Parser<'a> {
     fn parse_value(&mut self) -> Option<Value> {
         self.parse_whitespace();
 
-        match self.reader.take(1).as_slice() {
+        match self.reader.next(1).as_slice() {
             [] => {
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsingValue,
-                    self.line_number,
-                    self.col_number,
-                ));
+                self.errors.push(
+                    self.reader
+                        .create_error(ErrorCode::EndOfFileWhileParsingValue),
+                );
                 None
             }
             [Err(error), ..] => {
@@ -68,12 +61,10 @@ impl<'a> Parser<'a> {
             }
             [Ok(lexical::Token::Null), ..] => {
                 self.tokens = &self.tokens[1..];
-                self.col_number += 4;
                 Some(Value::Null)
             }
             [Ok(lexical::Token::Bool(val)), ..] => {
                 self.tokens = &self.tokens[1..];
-                self.col_number += val.len();
                 Some(Value::Bool(val.parse().unwrap()))
             }
             [Ok(lexical::Token::String(val)), ..] => self.parse_string(&val),
@@ -82,11 +73,8 @@ impl<'a> Parser<'a> {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
                 ',' | '}' | ']' | '|' => {
-                    self.errors.push(Error::new(
-                        ErrorCode::ExpectedToken,
-                        self.line_number,
-                        self.col_number,
-                    ));
+                    self.errors
+                        .push(self.reader.create_error(ErrorCode::ExpectedToken));
                     None
                 }
                 a => panic!("{a} is not a valid punctuation in JSON"),
@@ -98,24 +86,29 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array(&mut self) -> Option<Value> {
-        match self.tokens {
-            [lexical::Token::Punctuation('[')] => {
-                self.col_number += 1;
-                self.tokens = &[];
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing(']'),
-                    self.line_number,
-                    self.col_number,
-                ));
+        match self.reader.peek(2).as_slice() {
+            [Err(error), ..] => {
+                self.tokens = &self.tokens[1..];
+                self.errors.push(*error);
+                self.reader.next(1);
                 None
             }
-            [lexical::Token::Punctuation('['), lexical::Token::Punctuation(']'), ..] => {
+            [Ok(lexical::Token::Punctuation('['))] => {
+                self.tokens = &[];
+                self.reader.next(1);
+                self.errors.push(
+                    self.reader
+                        .create_error(ErrorCode::EndOfFileWhileParsing(']')),
+                );
+                None
+            }
+            [Ok(lexical::Token::Punctuation('[')), Ok(lexical::Token::Punctuation(']')), ..] => {
                 self.tokens = &self.tokens[2..];
-                self.col_number += 2;
+                self.reader.next(2);
                 Some(Value::Array(Vec::new()))
             }
-            [lexical::Token::Punctuation('['), ..] => {
-                self.col_number += 1;
+            [Ok(lexical::Token::Punctuation('[')), ..] => {
+                self.reader.next(1);
                 self.tokens = &self.tokens[1..];
                 self.parse_array_elements().map(Value::Array)
             }
@@ -129,11 +122,8 @@ impl<'a> Parser<'a> {
         const END_OF_ELEMENTS: char = ']';
 
         if self.tokens.is_empty() {
-            self.errors.push(Error::new(
-                ErrorCode::EndOfFileWhileParsing(END_OF_ELEMENTS),
-                self.line_number,
-                self.col_number,
-            ));
+            self.reader
+                .create_error(ErrorCode::EndOfFileWhileParsing(END_OF_ELEMENTS));
             return None;
         }
 
@@ -158,22 +148,18 @@ impl<'a> Parser<'a> {
     fn parse_object(&mut self) -> Option<Value> {
         match self.tokens {
             [lexical::Token::Punctuation('{')] => {
-                self.col_number += 1;
                 self.tokens = &[];
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing('}'),
-                    self.line_number,
-                    self.col_number,
-                ));
+                self.errors.push(
+                    self.reader
+                        .create_error(ErrorCode::EndOfFileWhileParsing('}')),
+                );
                 None
             }
             [lexical::Token::Punctuation('{'), lexical::Token::Punctuation('}'), ..] => {
-                self.col_number += 2;
                 self.tokens = &self.tokens[2..];
                 Some(Value::Object(HashMap::new()))
             }
             [lexical::Token::Punctuation('{'), ..] => {
-                self.col_number += 1;
                 self.tokens = &self.tokens[1..];
                 self.parse_object_members().map(Value::Object)
             }
@@ -187,11 +173,10 @@ impl<'a> Parser<'a> {
         const END_OF_MEMBERS: char = '}';
 
         if self.tokens.is_empty() {
-            self.errors.push(Error::new(
-                ErrorCode::EndOfFileWhileParsing(END_OF_MEMBERS),
-                self.line_number,
-                self.col_number,
-            ));
+            self.errors.push(
+                self.reader
+                    .create_error(ErrorCode::EndOfFileWhileParsing(END_OF_MEMBERS)),
+            );
             return None;
         }
 
@@ -201,7 +186,6 @@ impl<'a> Parser<'a> {
             self.parse_whitespace();
             match self.tokens {
                 [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
-                    self.col_number += s.len() + 1;
                     self.tokens = &self.tokens[2..];
                     match self.parse_string(&s) {
                         Some(Value::String(key)) => {
@@ -218,41 +202,25 @@ impl<'a> Parser<'a> {
                     }
                 }
                 [c, lexical::Token::Punctuation(':'), ..] => {
-                    self.errors.push(Error::new(
-                        ErrorCode::KeyMustBeAString,
-                        self.line_number,
-                        self.col_number,
-                    ));
-                    self.col_number += c.len() + 1;
+                    self.errors
+                        .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
                     self.tokens = &self.tokens[2..];
                     self.parse_value();
                 }
                 [lexical::Token::Punctuation(':'), ..] => {
-                    self.errors.push(Error::new(
-                        ErrorCode::KeyMustBeAString,
-                        self.line_number,
-                        self.col_number,
-                    ));
-                    self.col_number += 1;
+                    self.errors
+                        .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
                     self.tokens = &self.tokens[1..];
                     self.parse_value();
                 }
                 [lexical::Token::String(s), ..] => {
-                    self.errors.push(Error::new(
-                        ErrorCode::ExpectedColon,
-                        self.line_number,
-                        self.col_number,
-                    ));
-                    self.col_number += s.len();
+                    self.errors
+                        .push(self.reader.create_error(ErrorCode::ExpectedColon));
                     self.tokens = &self.tokens[1..];
                 }
                 [token, ..] => {
-                    self.errors.push(Error::new(
-                        ErrorCode::KeyMustBeAString,
-                        self.line_number,
-                        self.col_number,
-                    ));
-                    self.col_number += token.len();
+                    self.errors
+                        .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
                     self.tokens = &self.tokens[1..];
                 }
                 [] => {
@@ -276,16 +244,12 @@ impl<'a> Parser<'a> {
         let ret = match possible_number.parse::<f64>() {
             Ok(n) => Some(Value::Number(n)),
             Err(_) => {
-                self.errors.push(Error::new(
-                    ErrorCode::InvalidNumber,
-                    self.line_number,
-                    self.col_number,
-                ));
+                self.errors
+                    .push(self.reader.create_error(ErrorCode::InvalidNumber));
                 None
             }
         };
         self.tokens = &self.tokens[1..];
-        self.col_number += possible_number.len();
         ret
     }
 
@@ -312,11 +276,8 @@ impl<'a> Parser<'a> {
 
         let last = possible_string.chars().last().unwrap();
         let ret = if possible_string.len() == 1 || num_quotations != 2 || last != '"' {
-            self.errors.push(Error::new(
-                ErrorCode::ExpectedDoubleQuote,
-                self.line_number,
-                self.col_number,
-            ));
+            self.errors
+                .push(self.reader.create_error(ErrorCode::ExpectedDoubleQuote));
             None
         } else {
             Some(Value::String(
@@ -325,7 +286,6 @@ impl<'a> Parser<'a> {
         };
 
         self.tokens = &self.tokens[1..];
-        self.col_number += possible_string.len();
 
         ret
     }
@@ -335,47 +295,36 @@ impl<'a> Parser<'a> {
         match self.tokens {
             c @ ([] | [lexical::Token::Punctuation(',')]) => {
                 self.tokens = &[];
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing(end),
-                    self.line_number,
-                    self.col_number,
-                ));
-                self.col_number += c.len();
+                self.errors.push(
+                    self.reader
+                        .create_error(ErrorCode::EndOfFileWhileParsing(end)),
+                );
                 true
             }
             [lexical::Token::Punctuation(','), lexical::Token::Punctuation(possible_end), ..]
                 if *possible_end == end =>
             {
                 self.tokens = &self.tokens[2..];
-                self.col_number += 1;
-                self.errors.push(Error::new(
-                    ErrorCode::ExpectedToken,
-                    self.line_number,
-                    self.col_number,
-                ));
-                self.col_number += 1;
+                self.errors
+                    .push(self.reader.create_error(ErrorCode::ExpectedToken));
                 true
             }
             [lexical::Token::Punctuation(','), ..] => {
                 self.tokens = &self.tokens[1..];
-                self.col_number += 1;
                 false
             }
             [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
                 self.tokens = &self.tokens[1..];
-                self.col_number += 1;
                 true
             }
             [lexical::Token::NewLine, ..] => {
                 panic!("Shouldn't be possible to encounter");
             }
             [token, ..] => {
-                self.errors.push(Error::new(
-                    ErrorCode::EndOfFileWhileParsing(end),
-                    self.line_number,
-                    self.col_number,
-                ));
-                self.col_number += token.len();
+                self.errors.push(
+                    self.reader
+                        .create_error(ErrorCode::EndOfFileWhileParsing(end)),
+                );
                 false
             }
         }
@@ -393,12 +342,10 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 [lexical::Token::Punctuation(':'), ..] => {
-                    self.col_number += 1;
                     self.tokens = &self.tokens[1..];
                     self.parse_value();
                 }
                 [c, ..] => {
-                    self.col_number += c.len();
                     self.tokens = &self.tokens[1..];
                     seen_non_comma_value = true;
                 }
@@ -406,11 +353,10 @@ impl<'a> Parser<'a> {
         }
 
         if seen_non_comma_value {
-            self.errors.push(Error::new(
-                ErrorCode::ExpectedCommaOrEndWhileParsing(end),
-                self.line_number,
-                self.col_number,
-            ));
+            self.errors.push(
+                self.reader
+                    .create_error(ErrorCode::ExpectedCommaOrEndWhileParsing(end)),
+            );
         }
     }
 
@@ -418,12 +364,9 @@ impl<'a> Parser<'a> {
         loop {
             match self.tokens {
                 [lexical::Token::NewLine, ..] => {
-                    self.line_number += 1;
-                    self.col_number = 1;
                     self.tokens = &self.tokens[1..];
                 }
                 [lexical::Token::Whitespace(num_chars), ..] => {
-                    self.col_number += num_chars;
                     self.tokens = &self.tokens[1..];
                 }
                 _ => {
