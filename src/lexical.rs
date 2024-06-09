@@ -1,3 +1,5 @@
+use std::str::SplitWhitespace;
+
 use crate::errors::{Error, ErrorCode};
 
 #[derive(Debug, PartialEq)]
@@ -5,13 +7,33 @@ pub enum Token {
     NewLine,
     Whitespace(usize),
     Null,
-    Bool(bool),
+    Bool(String),
     String(String),
-    Number(f64),
+    Number(String),
     Punctuation(char),
 }
 
 impl Token {
+    pub fn is_whitespace(&self) -> bool {
+        match self {
+            Self::NewLine => true,
+            Self::Whitespace(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::NewLine => 1,
+            Self::Whitespace(spaces) => *spaces,
+            Self::Null => 4,
+            Self::Bool(b) => b.len(),
+            Self::String(s) => s.len(),
+            Self::Number(s) => s.len(),
+            Self::Punctuation(_) => 1,
+        }
+    }
+
     pub fn try_from_json(possible_json: &str) -> Result<Vec<Token>, Vec<Error>> {
         let token_strings = tokenize_into_strings(&possible_json);
 
@@ -44,14 +66,14 @@ impl Token {
         }
 
         match (c, token) {
-            (' ', whitespaces) => Ok(Token::Whitespace(whitespaces.len())),
+            (' ', _) => Ok(Token::Whitespace(token.len())),
             ('\n', _) => Ok(Token::NewLine),
             ('n', "null") => Ok(Token::Null),
-            ('f', "false") => Ok(Token::Bool(false)),
-            ('t', "true") => Ok(Token::Bool(true)),
+            ('f', "false") => Ok(Token::Bool("false".to_string())),
+            ('t', "true") => Ok(Token::Bool("true".to_string())),
             ('"', _) => Token::try_from_string(token, line_number),
-            ('-', _) => Token::try_from_number(token, line_number),
-            ('0'..='9', _) => Token::try_from_number(token, line_number),
+            ('-', _) => Ok(Token::Number(token.to_string())),
+            ('0'..='9', _) => Ok(Token::Number(token.to_string())),
             _ => Err(Error::new(ErrorCode::ExpectedToken, line_number)),
         }
     }
@@ -84,17 +106,6 @@ impl Token {
             Ok(Token::String(
                 possible_string[1..possible_string.len() - 1].to_string(),
             ))
-        }
-    }
-
-    fn try_from_number(possible_string: &str, line_number: usize) -> Result<Token, Error> {
-        assert!(!possible_string.is_empty());
-        match possible_string.parse::<f64>() {
-            Ok(n) => Ok(Token::Number(n)),
-            Err(_) => Err(Error::new(
-                ErrorCode::InvalidNumber(possible_string.to_string()),
-                line_number,
-            )),
         }
     }
 
@@ -342,11 +353,8 @@ mod tests {
         #[test]
         fn fail_on_invalid_number() {
             let json = r#"11.3de2"#;
-            let expected = vec![Error::new(
-                ErrorCode::InvalidNumber("11.3de2".to_string()),
-                1,
-            )];
-            assert_eq!(Err(expected), Token::try_from_json(json));
+            let expected = vec![Token::Number("11.3de2".into())];
+            assert_eq!(Ok(expected), Token::try_from_json(json));
         }
 
         #[test]
@@ -364,14 +372,14 @@ mod tests {
             let expected = vec![
                 Token::Whitespace(1),
                 Token::Punctuation('{'),
-                Token::String(String::from("age")),
+                Token::String("age".into()),
                 Token::Punctuation(':'),
-                Token::Number(30.0),
+                Token::Number("30".into()),
                 Token::Punctuation(','),
                 Token::String(String::from("is_student")),
                 Token::Punctuation(':'),
                 Token::Punctuation('['),
-                Token::Bool(false),
+                Token::Bool("false".into()),
                 Token::Punctuation(']'),
                 Token::Punctuation('}'),
             ];
