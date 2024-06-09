@@ -1,13 +1,13 @@
 use std::{fmt, fmt::Display};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ErrorCode {
     ExpectedToken,
     ExpectedDoubleQuote,
     ExpectedColon,
     ExpectedCommaOrEndWhileParsing(char),
     KeyMustBeAString,
-    InvalidNumber(String),
+    InvalidNumber,
     EndOfFileExpected,
     EndOfFileWhileParsing(char),
     EndOfFileWhileParsingValue,
@@ -27,7 +27,7 @@ impl Display for ErrorCode {
                 _ => panic!("Only arrays or objects are supported"),
             },
             ErrorCode::KeyMustBeAString => f.write_str("Key must be a string"),
-            ErrorCode::InvalidNumber(value) => write!(f, "Invalid number: {value}"),
+            ErrorCode::InvalidNumber => write!(f, "Invalid number"),
             ErrorCode::EndOfFileWhileParsing(c) => match c {
                 ']' => f.write_str("End of file while parsing a list"),
                 '}' => f.write_str("End of file while parsing an object"),
@@ -41,7 +41,7 @@ impl Display for ErrorCode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Error {
     code: ErrorCode,
     line: usize,

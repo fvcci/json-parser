@@ -24,7 +24,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(json: &str) -> Result<Value, Vec<Error>> {
+    pub fn parse(json: &'a str) -> Result<Value, Vec<Error>> {
         let tokens = lexical::Token::try_from_json(json)?;
 
         let mut parser = Parser {
@@ -59,24 +59,29 @@ impl<'a> Parser<'a> {
                     self.line_number,
                     self.col_number,
                 ));
-                return None;
+                None
             }
-            [lexical::Token::Null, ..] => {
+            // [Err(error), ..] => {
+            //     self.tokens = &self.tokens[1..];
+            //     self.errors.push(*error);
+            //     None
+            // }
+            [(lexical::Token::Null), ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += 4;
                 Some(Value::Null)
             }
-            [lexical::Token::Bool(val), ..] => {
+            [(lexical::Token::Bool(val)), ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += val.len();
                 Some(Value::Bool(val.parse().unwrap()))
             }
-            [lexical::Token::String(val), ..] => self.parse_string(&val),
-            [lexical::Token::Number(val), ..] => self.parse_number(&val),
-            [lexical::Token::Punctuation(c), ..] => match *c {
+            [(lexical::Token::String(val)), ..] => self.parse_string(&val),
+            [(lexical::Token::Number(val)), ..] => self.parse_number(&val),
+            [(lexical::Token::Punctuation(c)), ..] => match *c {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
-                ',' | '}' | ']' => {
+                ',' | '}' | ']' | '|' => {
                     self.errors.push(Error::new(
                         ErrorCode::ExpectedToken,
                         self.line_number,
@@ -272,7 +277,7 @@ impl<'a> Parser<'a> {
             Ok(n) => Some(Value::Number(n)),
             Err(_) => {
                 self.errors.push(Error::new(
-                    ErrorCode::InvalidNumber(possible_number.to_string()),
+                    ErrorCode::InvalidNumber,
                     self.line_number,
                     self.col_number,
                 ));
@@ -582,7 +587,7 @@ mod tests {
     #[test]
     fn fail_on_invalid_number() {
         let json = r#"11.3de2"#;
-        let expected = vec![Error::new(ErrorCode::InvalidNumber(json.to_string()), 1, 1)];
+        let expected = vec![Error::new(ErrorCode::InvalidNumber, 1, 1)];
         assert_eq!(Err(expected), Parser::parse(json));
     }
 
