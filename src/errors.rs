@@ -45,10 +45,11 @@ impl Display for ErrorCode {
 pub struct Error {
     code: ErrorCode,
     line: usize,
+    col: usize,
 }
 
 impl Error {
-    pub fn new(code: ErrorCode, line: usize) -> Self {
-        Error { code, line }
+    pub fn new(code: ErrorCode, line: usize, col: usize) -> Self {
+        Error { code, line, col }
     }
 }

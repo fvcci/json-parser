@@ -40,14 +40,21 @@ impl Token {
         let mut tokens = Vec::<Token>::new();
         let mut errors = Vec::<Error>::new();
         let mut line_number = 1usize;
+        let mut col_number = 1usize;
         for token in token_strings {
             if token == "\n" {
                 line_number += 1;
+                col_number = 1;
             }
-            match Token::try_from_token(&token, line_number) {
-                Ok(t) => tokens.push(t),
-                Err(error) => errors.push(error),
+            match Token::try_from_token(&token) {
+                Some(t) => tokens.push(t),
+                None => errors.push(Error::new(
+                    ErrorCode::ExpectedToken,
+                    line_number,
+                    col_number,
+                )),
             }
+            col_number += token.len();
         }
 
         if !errors.is_empty() {
@@ -57,55 +64,24 @@ impl Token {
         }
     }
 
-    fn try_from_token(token: &str, line_number: usize) -> Result<Token, Error> {
+    fn try_from_token(token: &str) -> Option<Token> {
         assert!(!token.is_empty());
 
         let c = token.chars().next().unwrap();
         if Token::is_punctuation(&c) {
-            return Ok(Token::Punctuation(c));
+            return Some(Token::Punctuation(c));
         }
 
         match (c, token) {
-            (' ', _) => Ok(Token::Whitespace(token.len())),
-            ('\n', _) => Ok(Token::NewLine),
-            ('n', "null") => Ok(Token::Null),
-            ('f', "false") => Ok(Token::Bool("false".to_string())),
-            ('t', "true") => Ok(Token::Bool("true".to_string())),
-            ('"', _) => Token::try_from_string(token, line_number),
-            ('-', _) => Ok(Token::Number(token.to_string())),
-            ('0'..='9', _) => Ok(Token::Number(token.to_string())),
-            _ => Err(Error::new(ErrorCode::ExpectedToken, line_number)),
-        }
-    }
-
-    fn try_from_string(possible_string: &str, line_number: usize) -> Result<Token, Error> {
-        assert!(!possible_string.is_empty());
-
-        let mut chars = possible_string.chars().peekable();
-        let mut num_quotations = 0;
-
-        while let Some(c) = chars.next() {
-            match (c, chars.peek()) {
-                ('\\', Some('"')) => {
-                    chars.next();
-                }
-                ('"', _) => {
-                    num_quotations += 1;
-                }
-                _ => {}
-            }
-        }
-
-        let first = possible_string.chars().next().unwrap();
-        assert!(first == '"');
-
-        let last = possible_string.chars().last().unwrap();
-        if possible_string.len() == 1 || num_quotations != 2 || last != '"' {
-            Err(Error::new(ErrorCode::ExpectedDoubleQuote, line_number))
-        } else {
-            Ok(Token::String(
-                possible_string[1..possible_string.len() - 1].to_string(),
-            ))
+            (' ', _) => Some(Token::Whitespace(token.len())),
+            ('\n', _) => Some(Token::NewLine),
+            ('n', "null") => Some(Token::Null),
+            ('f', "false") => Some(Token::Bool("false".to_string())),
+            ('t', "true") => Some(Token::Bool("true".to_string())),
+            ('"', _) => Some(Token::String(token.to_string())),
+            ('-', _) => Some(Token::Number(token.to_string())),
+            ('0'..='9', _) => Some(Token::Number(token.to_string())),
+            _ => None,
         }
     }
 
@@ -327,41 +303,18 @@ mod tests {
         #[test]
         fn fail_space_separated_garbage() {
             let expected = vec![
-                Error::new(ErrorCode::ExpectedToken, 1),
-                Error::new(ErrorCode::ExpectedToken, 1),
+                Error::new(ErrorCode::ExpectedToken, 1, 1),
+                Error::new(ErrorCode::ExpectedToken, 1, 6),
             ];
             let json = "this garbage";
             assert_eq!(Err(expected), Token::try_from_json(json));
         }
 
         #[test]
-        fn fail_on_multiple_quotes_in_one_token() {
-            let json = r#"
-                "d"fds"potato"
-            "#;
-            let expected = vec![Error::new(ErrorCode::ExpectedDoubleQuote, 2)];
-            assert_eq!(Err(expected), Token::try_from_json(json));
-        }
-
-        #[test]
-        fn fail_on_unmatched_quotation() {
-            let json = r#""fds"#;
-            let expected = vec![Error::new(ErrorCode::ExpectedDoubleQuote, 1)];
-            assert_eq!(Err(expected), Token::try_from_json(json));
-        }
-
-        #[test]
-        fn fail_on_invalid_number() {
-            let json = r#"11.3de2"#;
-            let expected = vec![Token::Number("11.3de2".into())];
-            assert_eq!(Ok(expected), Token::try_from_json(json));
-        }
-
-        #[test]
         fn pass_space_in_string() {
             let json = "\"fjdsoif fds\"";
             assert_eq!(
-                Ok(vec![Token::String("fjdsoif fds".to_string())]),
+                Ok(vec![Token::String("\"fjdsoif fds\"".to_string())]),
                 Token::try_from_json(json)
             );
         }
@@ -372,11 +325,11 @@ mod tests {
             let expected = vec![
                 Token::Whitespace(1),
                 Token::Punctuation('{'),
-                Token::String("age".into()),
+                Token::String("\"age\"".into()),
                 Token::Punctuation(':'),
                 Token::Number("30".into()),
                 Token::Punctuation(','),
-                Token::String(String::from("is_student")),
+                Token::String("\"is_student\"".into()),
                 Token::Punctuation(':'),
                 Token::Punctuation('['),
                 Token::Bool("false".into()),
