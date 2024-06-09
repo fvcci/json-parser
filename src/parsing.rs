@@ -23,10 +23,8 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn parse(json: &'a str) -> Result<Value, Vec<Error>> {
-        let tokens = lexical::Token::try_from_json(json)?;
-
         let mut parser = Parser {
-            tokens: &tokens[..],
+            tokens: &lexical::Token::try_from_json(json)?,
             reader: lexical::Reader::new(json),
             errors: Vec::<Error>::new(),
         };
@@ -34,7 +32,13 @@ impl<'a> Parser<'a> {
         let value_opt = parser.parse_value();
         if !parser.errors.is_empty() {
             Err(parser.errors)
-        } else if value_opt.is_none() || !parser.tokens.iter().all(|x| x.is_whitespace()) {
+        } else if value_opt.is_none()
+            || !parser
+                .reader
+                .next(usize::MAX)
+                .iter()
+                .all(|x| x.clone().is_ok_and(|y| y.is_whitespace()))
+        {
             Err(vec![parser
                 .reader
                 .create_error(ErrorCode::EndOfFileExpected)])
@@ -44,8 +48,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> Option<Value> {
-        self.parse_whitespace();
-
         match self.reader.next(1).as_slice() {
             [] => {
                 self.errors.push(
@@ -55,18 +57,11 @@ impl<'a> Parser<'a> {
                 None
             }
             [Err(error), ..] => {
-                self.tokens = &self.tokens[1..];
                 self.errors.push(*error);
                 None
             }
-            [Ok(lexical::Token::Null), ..] => {
-                self.tokens = &self.tokens[1..];
-                Some(Value::Null)
-            }
-            [Ok(lexical::Token::Bool(val)), ..] => {
-                self.tokens = &self.tokens[1..];
-                Some(Value::Bool(val.parse().unwrap()))
-            }
+            [Ok(lexical::Token::Null), ..] => Some(Value::Null),
+            [Ok(lexical::Token::Bool(val)), ..] => Some(Value::Bool(val.parse().unwrap())),
             [Ok(lexical::Token::String(val)), ..] => self.parse_string(&val),
             [Ok(lexical::Token::Number(val)), ..] => self.parse_number(&val),
             [Ok(lexical::Token::Punctuation(c)), ..] => match *c {
@@ -88,13 +83,11 @@ impl<'a> Parser<'a> {
     fn parse_array(&mut self) -> Option<Value> {
         match self.reader.peek(2).as_slice() {
             [Err(error), ..] => {
-                self.tokens = &self.tokens[1..];
                 self.errors.push(*error);
                 self.reader.next(1);
                 None
             }
             [Ok(lexical::Token::Punctuation('['))] => {
-                self.tokens = &[];
                 self.reader.next(1);
                 self.errors.push(
                     self.reader
@@ -103,13 +96,11 @@ impl<'a> Parser<'a> {
                 None
             }
             [Ok(lexical::Token::Punctuation('[')), Ok(lexical::Token::Punctuation(']')), ..] => {
-                self.tokens = &self.tokens[2..];
                 self.reader.next(2);
                 Some(Value::Array(Vec::new()))
             }
             [Ok(lexical::Token::Punctuation('[')), ..] => {
                 self.reader.next(1);
-                self.tokens = &self.tokens[1..];
                 self.parse_array_elements().map(Value::Array)
             }
             _ => {
@@ -129,7 +120,6 @@ impl<'a> Parser<'a> {
 
         let mut elements = Vec::<Value>::new();
         loop {
-            self.parse_whitespace();
             if let Some(element) = self.parse_value() {
                 elements.push(element);
             }
@@ -183,7 +173,6 @@ impl<'a> Parser<'a> {
         let mut members = HashMap::<String, Value>::new();
 
         loop {
-            self.parse_whitespace();
             match self.tokens {
                 [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
                     self.tokens = &self.tokens[2..];
@@ -291,7 +280,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_sequence_separator(&mut self, end: char) -> bool {
-        self.parse_whitespace();
         match self.tokens {
             c @ ([] | [lexical::Token::Punctuation(',')]) => {
                 self.tokens = &[];
@@ -333,7 +321,6 @@ impl<'a> Parser<'a> {
     fn parse_until_comma_or_end(&mut self, end: char) {
         let mut seen_non_comma_value = false;
         loop {
-            self.parse_whitespace();
             match self.tokens {
                 [] | [lexical::Token::Punctuation(','), ..] => {
                     break;
@@ -357,22 +344,6 @@ impl<'a> Parser<'a> {
                 self.reader
                     .create_error(ErrorCode::ExpectedCommaOrEndWhileParsing(end)),
             );
-        }
-    }
-
-    fn parse_whitespace(&mut self) {
-        loop {
-            match self.tokens {
-                [lexical::Token::NewLine, ..] => {
-                    self.tokens = &self.tokens[1..];
-                }
-                [lexical::Token::Whitespace(num_chars), ..] => {
-                    self.tokens = &self.tokens[1..];
-                }
-                _ => {
-                    break;
-                }
-            }
         }
     }
 }
