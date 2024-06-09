@@ -3,7 +3,7 @@ mod lexical;
 mod parsing;
 use std::fs;
 
-fn time_test(test: &str, file_size_bytes: u64, process: impl Fn()) {
+fn time_test(test: String, file_size_bytes: u64, process: impl Fn()) {
     const NUM_RUNS: u32 = 100;
 
     let start_time = std::time::Instant::now();
@@ -27,26 +27,11 @@ fn get_file_contents(file_name: &str) -> (String, u64) {
     (contents, file_size_bytes)
 }
 
-fn read_canada_json() {
-    let (contents, file_size_bytes) = get_file_contents("tests/canada.json");
+fn read_json(file_name: &str) {
+    let (contents, file_size_bytes) = get_file_contents(file_name);
     let contents_str = contents.as_str();
     time_test(
-        "read_canada_json",
-        file_size_bytes,
-        || match parsing::Parser::parse(contents_str) {
-            Ok(json) => {
-                // println!("{json:#?}");
-            }
-            Err(error) => panic!("error: {:?}", error[0]),
-        },
-    );
-}
-
-fn read_twitter_json() {
-    let (contents, file_size_bytes) = get_file_contents("tests/twitter.json");
-    let contents_str = contents.as_str();
-    time_test(
-        "read_twitter_json",
+        format!("read {file_name}"),
         file_size_bytes,
         || match parsing::Parser::parse(contents_str) {
             Ok(json) => {
@@ -58,6 +43,6 @@ fn read_twitter_json() {
 }
 
 fn main() {
-    read_canada_json();
-    read_twitter_json();
+    read_json("tests/canada.json");
+    read_json("tests/twitter.json");
 }
