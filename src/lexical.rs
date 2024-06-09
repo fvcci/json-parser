@@ -89,94 +89,57 @@ impl Token {
     }
 }
 
-// struct Reader<'a> {
-//     chars: Peekable<Chars<'a>>,
-//     is_in_quotes: bool,
-//     line_number: usize,
-//     col_number: usize,
-// }
+struct Reader<'a> {
+    chars: &'a str,
+    is_in_quotes: bool,
+    line: usize,
+    col: usize,
+}
 
-// impl<'a> Reader<'a> {
-//     fn new(possible_json: &'a str) -> Reader<'a> {
-//         Reader {
-//             chars: possible_json.chars().peekable(),
-//             is_in_quotes: false,
-//             line_number: 1,
-//             col_number: 1,
-//         }
-//     }
+impl<'a> Reader<'a> {
+    fn new(possible_json: &'a str) -> Reader<'a> {
+        Reader {
+            chars: possible_json,
+            is_in_quotes: false,
+            line: 1,
+            col: 1,
+        }
+    }
 
-//     fn read_whitespace(&mut self) {
-//         match self.chars.peek() {
-//             Some('\n') | Some('\r') => {
-//                 self.chars.next();
-//                 self.line_number += 1;
-//                 self.col_number += 1;
-//             }
-//             Some(' ') | Some('\t') => {
-//                 self.chars.next();
-//                 self.col_number += 1;
-//             }
-//             _ => {}
-//         }
-//     }
+    fn read_whitespace(&mut self) {
+        let mut num_iterated = 0;
+        for c in self.chars.chars() {
+            if !c.is_whitespace() {
+                break;
+            }
 
-//     fn peek(&mut self, num_tokens: usize) -> Result<Vec<Token>, Vec<Error>> {
-//         self.read_whitespace();
+            match c {
+                '\n' | '\r' => {
+                    self.line += 1;
+                    self.col = 1;
+                }
+                ' ' | '\t' => {
+                    self.col += 1;
+                }
+                _ => {
+                    panic!("{c} is not a whitespace");
+                }
+            }
+            num_iterated += 1;
+        }
+        self.chars = &self.chars[num_iterated..];
+    }
 
-//         let mut tokens = Vec::<Token>::new();
-//         let mut errors = Vec::<Error>::new();
-//         let mut cur_token = String::new();
+    fn peek(&mut self, num_tokens: usize) -> Result<Vec<Token>, Vec<Error>> {
+        self.read_whitespace();
 
-//         while let Some(c) = self.chars.next() {
-//             match c {
-//                 '"' => {
-//                     self.is_in_quotes = !self.is_in_quotes;
-//                     cur_token.push(c);
-//                 }
-//                 '\\' if self.is_in_quotes => {
-//                     cur_token.push('\\');
-//                     if let Some(c) = self.chars.next() {
-//                         cur_token.push(c);
-//                     }
-//                 }
-//                 c if !self.is_in_quotes && Token::is_punctuation(&c) => {
-//                     if !cur_token.is_empty() {
-//                         match Token::try_from_token(&cur_token, self.line_number) {
-//                             Ok(val) => tokens.push(val),
-//                             Err(e) => errors.push(e),
-//                         }
-//                         tokens.push(Token::Punctuation(c));
-//                     } else {
-//                         cur_token.push(c);
-//                     }
-//                     cur_token.clear();
-//                 }
-//                 _ => {
-//                     assert!(!c.is_whitespace());
-//                     cur_token.push(c);
-//                 }
-//             }
+        let mut tokens = Vec::<Token>::new();
+        let mut errors = Vec::<Error>::new();
+        let mut cur_token = String::new();
 
-//             if tokens.len() == num_tokens {
-//                 break;
-//             }
-//         }
-
-//         if !cur_token.is_empty() {
-//             match Token::try_from_token(&cur_token, self.line_number) {
-//                 Ok(val) => tokens.push(val),
-//                 Err(e) => errors.push(e),
-//             }
-//         }
-
-//         if errors.is_empty() {
-//             Ok(tokens)
-//         } else {
-//             Err(errors)
-//         }
-//     }
-// }
+        Err(vec![])
+    }
+}
 
 fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
     let mut is_in_quotes = false;

@@ -3,7 +3,7 @@ mod lexical;
 mod parsing;
 use std::fs;
 
-fn time_test(test: String, file_size_bytes: u64, process: impl Fn()) {
+fn time_test(test: String, file_size_bytes: usize, process: impl Fn()) {
     const NUM_RUNS: u32 = 100;
 
     let start_time = std::time::Instant::now();
@@ -18,9 +18,9 @@ fn time_test(test: String, file_size_bytes: u64, process: impl Fn()) {
     println!("[{test}] Parsing speed: {mbps:.2} MB/s");
 }
 
-fn get_file_contents(file_name: &str) -> (String, u64) {
+fn get_file_contents(file_name: &str) -> (String, usize) {
     let file = fs::File::open(file_name).unwrap();
-    let file_size_bytes = file.metadata().unwrap().len();
+    let file_size_bytes = file.metadata().unwrap().len().try_into().unwrap();
 
     let contents = fs::read_to_string(file_name).expect("Should have been able to read the file");
 
@@ -28,12 +28,13 @@ fn get_file_contents(file_name: &str) -> (String, u64) {
 }
 
 fn read_json(file_name: &str) {
-    let (contents, file_size_bytes) = get_file_contents(file_name);
-    let contents_str = contents.as_str();
+    // let (contents, file_size_bytes) = get_file_contents(file_name);
+    let contents = fs::read_to_string(file_name).expect("Should have been able to read the file");
+    let file_size_bytes = contents.len();
     time_test(
         format!("read {file_name}"),
         file_size_bytes,
-        || match parsing::Parser::parse(contents_str) {
+        || match parsing::Parser::parse(&contents) {
             Ok(json) => {
                 // println!("{json:#?}");
             }
