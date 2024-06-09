@@ -52,7 +52,7 @@ impl<'a> Parser<'a> {
     fn parse_value(&mut self) -> Option<Value> {
         self.parse_whitespace();
 
-        match self.tokens {
+        match self.reader.take(1).as_slice() {
             [] => {
                 self.errors.push(Error::new(
                     ErrorCode::EndOfFileWhileParsingValue,
@@ -61,24 +61,24 @@ impl<'a> Parser<'a> {
                 ));
                 None
             }
-            // [Err(error), ..] => {
-            //     self.tokens = &self.tokens[1..];
-            //     self.errors.push(*error);
-            //     None
-            // }
-            [(lexical::Token::Null), ..] => {
+            [Err(error), ..] => {
+                self.tokens = &self.tokens[1..];
+                self.errors.push(*error);
+                None
+            }
+            [Ok(lexical::Token::Null), ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += 4;
                 Some(Value::Null)
             }
-            [(lexical::Token::Bool(val)), ..] => {
+            [Ok(lexical::Token::Bool(val)), ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += val.len();
                 Some(Value::Bool(val.parse().unwrap()))
             }
-            [(lexical::Token::String(val)), ..] => self.parse_string(&val),
-            [(lexical::Token::Number(val)), ..] => self.parse_number(&val),
-            [(lexical::Token::Punctuation(c)), ..] => match *c {
+            [Ok(lexical::Token::String(val)), ..] => self.parse_string(&val),
+            [Ok(lexical::Token::Number(val)), ..] => self.parse_number(&val),
+            [Ok(lexical::Token::Punctuation(c)), ..] => match *c {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
                 ',' | '}' | ']' | '|' => {

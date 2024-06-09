@@ -2,7 +2,7 @@ use std::{cmp::min, collections::VecDeque, iter::Peekable, str::Chars};
 
 use crate::errors::{Error, ErrorCode};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     NewLine,
     Whitespace(usize),
@@ -109,15 +109,20 @@ impl<'a> Reader<'a> {
     }
 
     pub fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
-        self.peek(num_tokens);
+        self.read_in(num_tokens);
         self.buffer
             .drain(..min(self.buffer.len(), num_tokens))
             .collect()
     }
 
-    pub fn peek(&mut self, num_tokens: usize) -> &[Result<Token, Error>] {
+    pub fn peek(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
+        self.read_in(num_tokens);
+        self.buffer[..min(self.buffer.len(), num_tokens)].to_vec()
+    }
+
+    fn read_in(&mut self, num_tokens: usize) {
         if self.buffer.len() >= num_tokens {
-            return &self.buffer[..num_tokens];
+            return;
         }
 
         let mut is_in_quotes = false;
@@ -168,8 +173,6 @@ impl<'a> Reader<'a> {
             self.buffer
                 .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
         }
-
-        &self.buffer
     }
 
     fn create_error(&self) -> Error {
