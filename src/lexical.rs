@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, str::Chars};
+use std::{cmp::min, collections::VecDeque, iter::Peekable, str::Chars};
 
 use crate::errors::{Error, ErrorCode};
 
@@ -92,64 +92,55 @@ impl Token {
 }
 
 struct Reader<'a> {
-    chars: Chars<'a>,
+    chars: Peekable<Chars<'a>>,
     buffer: Vec<Result<Token, Error>>,
-    is_in_quotes: bool,
     line: usize,
     col: usize,
 }
 
 impl<'a> Reader<'a> {
-    fn new(possible_json: &'a str) -> Reader<'a> {
+    pub fn new(possible_json: &'a str) -> Reader<'a> {
         Reader {
-            chars: possible_json.chars(),
+            chars: possible_json.chars().peekable(),
             buffer: Vec::<Result<Token, Error>>::new(),
-            is_in_quotes: false,
             line: 1,
             col: 1,
         }
     }
 
-    fn peek(&mut self, num_tokens: usize) -> &[Result<Token, Error>] {
+    pub fn peek(&mut self, num_tokens: usize) -> &[Result<Token, Error>] {
         if self.buffer.len() >= num_tokens {
             return &self.buffer[..num_tokens];
         }
 
+        let mut is_in_quotes = false;
         let mut cur_token = String::new();
 
         while let Some(c) = self.chars.next() {
             match c {
                 '"' => {
-                    self.is_in_quotes = !self.is_in_quotes;
+                    is_in_quotes = !is_in_quotes;
                     cur_token.push('"');
                 }
-                c @ (',' | ':' | '{' | '}' | '[' | ']') if !self.is_in_quotes => {
+                c @ (',' | ':' | '{' | '}' | '[' | ']') if !is_in_quotes => {
                     if cur_token.is_empty() {
                         self.buffer.push(Ok(Token::Punctuation(c)));
                         continue;
                     }
 
                     self.buffer
-                        .push(Token::try_from_token(&cur_token).ok_or(Error::new(
-                            ErrorCode::ExpectedToken,
-                            self.line,
-                            self.col,
-                        )));
+                        .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
                     cur_token.clear();
                     self.buffer.push(Ok(Token::Punctuation(c)));
                 }
-                c if !self.is_in_quotes && c.is_whitespace() => {
+                c if !is_in_quotes && c.is_whitespace() => {
+                    self.read_whitespace();
                     if cur_token.is_empty() {
                         continue;
                     }
                     self.buffer
-                        .push(Token::try_from_token(&cur_token).ok_or(Error::new(
-                            ErrorCode::ExpectedToken,
-                            self.line,
-                            self.col,
-                        )));
+                        .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
                     cur_token.clear();
-                    self.read_whitespace();
                 }
                 c => {
                     cur_token.push(c);
@@ -161,18 +152,32 @@ impl<'a> Reader<'a> {
             }
         }
 
-        assert!(cur_token.is_empty());
         assert!(self.buffer.len() <= num_tokens);
+        if !cur_token.is_empty() {
+            assert!(
+                self.buffer.len() < num_tokens,
+                "All required tokens must not have been parsed"
+            );
+            self.buffer
+                .push(Token::try_from_token(&cur_token).ok_or(self.create_error()));
+        }
+
         &self.buffer
     }
 
-    fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
-        assert!(self.buffer.len() >= num_tokens);
-        self.buffer.drain(..num_tokens).collect()
+    fn create_error(&self) -> Error {
+        Error::new(ErrorCode::ExpectedToken, self.line, self.col)
+    }
+
+    pub fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
+        self.peek(num_tokens);
+        self.buffer
+            .drain(..min(self.buffer.len(), num_tokens))
+            .collect()
     }
 
     fn read_whitespace(&mut self) {
-        while let Some(c) = self.chars.next() {
+        while let Some(c) = self.chars.peek() {
             if !c.is_whitespace() {
                 break;
             }
@@ -189,6 +194,7 @@ impl<'a> Reader<'a> {
                     panic!("{c} is not a whitespace");
                 }
             }
+            self.chars.next();
         }
     }
 }
@@ -254,6 +260,58 @@ fn tokenize_into_strings(possible_json: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod reader {
+        use super::*;
+
+        #[test]
+        fn pass_json() {
+            let json = r#"{ "age" : 30 , "is_student" : [false] }"#;
+            let mut reader = Reader::new(json);
+
+            assert_eq!(
+                vec![
+                    Ok(Token::Punctuation('{')),
+                    Ok(Token::String("\"age\"".to_string()))
+                ],
+                reader.peek(2)
+            );
+
+            assert_eq!(
+                vec![
+                    Ok(Token::Punctuation('{')),
+                    Ok(Token::String("\"age\"".to_string()))
+                ],
+                reader.take(2)
+            );
+
+            assert_eq!(
+                vec![
+                    Ok(Token::Punctuation(':')),
+                    Ok(Token::Number("30".to_string())),
+                    Ok(Token::Punctuation(',')),
+                    Ok(Token::String("\"is_student\"".to_string())),
+                    Ok(Token::Punctuation(':')),
+                    Ok(Token::Punctuation('[')),
+                    Ok(Token::Bool("false".to_string())),
+                    Ok(Token::Punctuation(']')),
+                    Ok(Token::Punctuation('}'))
+                ],
+                reader.take(11)
+            );
+        }
+
+        #[test]
+        fn pass_single_token() {
+            let json = r#""}, \n ""#;
+            let mut reader = Reader::new(json);
+
+            assert_eq!(
+                vec![Ok(Token::String(r#""}, \n ""#.to_string()))],
+                reader.take(1)
+            );
+        }
+    }
 
     mod tokenize_into_strings {
         use super::*;
