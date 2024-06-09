@@ -17,6 +17,7 @@ pub enum Value {
 
 pub struct Parser<'a> {
     tokens: &'a [lexical::Token],
+    reader: lexical::Reader<'a>,
     errors: Vec<Error>,
     line_number: usize,
     col_number: usize,
@@ -28,6 +29,7 @@ impl<'a> Parser<'a> {
 
         let mut parser = Parser {
             tokens: &tokens[..],
+            reader: lexical::Reader::new(json),
             errors: Vec::<Error>::new(),
             line_number: 1,
             col_number: 1,
@@ -50,29 +52,28 @@ impl<'a> Parser<'a> {
     fn parse_value(&mut self) -> Option<Value> {
         self.parse_whitespace();
 
-        if self.tokens.is_empty() {
-            self.errors.push(Error::new(
-                ErrorCode::EndOfFileWhileParsingValue,
-                self.line_number,
-                self.col_number,
-            ));
-            return None;
-        }
-
-        match &self.tokens[0] {
-            lexical::Token::Null => {
+        match self.tokens {
+            [] => {
+                self.errors.push(Error::new(
+                    ErrorCode::EndOfFileWhileParsingValue,
+                    self.line_number,
+                    self.col_number,
+                ));
+                return None;
+            }
+            [lexical::Token::Null, ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += 4;
                 Some(Value::Null)
             }
-            lexical::Token::Bool(val) => {
+            [lexical::Token::Bool(val), ..] => {
                 self.tokens = &self.tokens[1..];
                 self.col_number += val.len();
                 Some(Value::Bool(val.parse().unwrap()))
             }
-            lexical::Token::String(val) => self.parse_string(&val),
-            lexical::Token::Number(val) => self.parse_number(&val),
-            lexical::Token::Punctuation(c) => match *c {
+            [lexical::Token::String(val), ..] => self.parse_string(&val),
+            [lexical::Token::Number(val), ..] => self.parse_number(&val),
+            [lexical::Token::Punctuation(c), ..] => match *c {
                 '{' => self.parse_object(),
                 '[' => self.parse_array(),
                 ',' | '}' | ']' => {

@@ -91,7 +91,7 @@ impl Token {
     }
 }
 
-struct Reader<'a> {
+pub struct Reader<'a> {
     chars: Peekable<Chars<'a>>,
     buffer: Vec<Result<Token, Error>>,
     line: usize,
@@ -106,6 +106,13 @@ impl<'a> Reader<'a> {
             line: 1,
             col: 1,
         }
+    }
+
+    pub fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
+        self.peek(num_tokens);
+        self.buffer
+            .drain(..min(self.buffer.len(), num_tokens))
+            .collect()
     }
 
     pub fn peek(&mut self, num_tokens: usize) -> &[Result<Token, Error>] {
@@ -167,13 +174,6 @@ impl<'a> Reader<'a> {
 
     fn create_error(&self) -> Error {
         Error::new(ErrorCode::ExpectedToken, self.line, self.col)
-    }
-
-    pub fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
-        self.peek(num_tokens);
-        self.buffer
-            .drain(..min(self.buffer.len(), num_tokens))
-            .collect()
     }
 
     fn read_whitespace(&mut self) {
