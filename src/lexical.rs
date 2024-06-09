@@ -1,3 +1,5 @@
+use std::{collections::VecDeque, str::Chars};
+
 use crate::errors::{Error, ErrorCode};
 
 #[derive(Debug, PartialEq)]
@@ -66,7 +68,7 @@ impl Token {
         assert!(!token.is_empty());
 
         let c = token.chars().next().unwrap();
-        if Token::is_punctuation(&c) {
+        if token.len() == 1 && Token::is_punctuation(&c) {
             return Some(Token::Punctuation(c));
         }
 
@@ -90,7 +92,8 @@ impl Token {
 }
 
 struct Reader<'a> {
-    chars: &'a str,
+    chars: Chars<'a>,
+    buffer: Vec<Result<Token, Error>>,
     is_in_quotes: bool,
     line: usize,
     col: usize,
@@ -99,16 +102,77 @@ struct Reader<'a> {
 impl<'a> Reader<'a> {
     fn new(possible_json: &'a str) -> Reader<'a> {
         Reader {
-            chars: possible_json,
+            chars: possible_json.chars(),
+            buffer: Vec::<Result<Token, Error>>::new(),
             is_in_quotes: false,
             line: 1,
             col: 1,
         }
     }
 
+    fn peek(&mut self, num_tokens: usize) -> &[Result<Token, Error>] {
+        if self.buffer.len() >= num_tokens {
+            return &self.buffer[..num_tokens];
+        }
+
+        let mut cur_token = String::new();
+
+        while let Some(c) = self.chars.next() {
+            match c {
+                '"' => {
+                    self.is_in_quotes = !self.is_in_quotes;
+                    cur_token.push('"');
+                }
+                c @ (',' | ':' | '{' | '}' | '[' | ']') if !self.is_in_quotes => {
+                    if cur_token.is_empty() {
+                        self.buffer.push(Ok(Token::Punctuation(c)));
+                        continue;
+                    }
+
+                    self.buffer
+                        .push(Token::try_from_token(&cur_token).ok_or(Error::new(
+                            ErrorCode::ExpectedToken,
+                            self.line,
+                            self.col,
+                        )));
+                    cur_token.clear();
+                    self.buffer.push(Ok(Token::Punctuation(c)));
+                }
+                c if !self.is_in_quotes && c.is_whitespace() => {
+                    if cur_token.is_empty() {
+                        continue;
+                    }
+                    self.buffer
+                        .push(Token::try_from_token(&cur_token).ok_or(Error::new(
+                            ErrorCode::ExpectedToken,
+                            self.line,
+                            self.col,
+                        )));
+                    cur_token.clear();
+                    self.read_whitespace();
+                }
+                c => {
+                    cur_token.push(c);
+                }
+            }
+
+            if self.buffer.len() == num_tokens {
+                break;
+            }
+        }
+
+        assert!(cur_token.is_empty());
+        assert!(self.buffer.len() <= num_tokens);
+        &self.buffer
+    }
+
+    fn take(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
+        assert!(self.buffer.len() >= num_tokens);
+        self.buffer.drain(..num_tokens).collect()
+    }
+
     fn read_whitespace(&mut self) {
-        let mut num_iterated = 0;
-        for c in self.chars.chars() {
+        while let Some(c) = self.chars.next() {
             if !c.is_whitespace() {
                 break;
             }
@@ -125,19 +189,7 @@ impl<'a> Reader<'a> {
                     panic!("{c} is not a whitespace");
                 }
             }
-            num_iterated += 1;
         }
-        self.chars = &self.chars[num_iterated..];
-    }
-
-    fn peek(&mut self, num_tokens: usize) -> Result<Vec<Token>, Vec<Error>> {
-        self.read_whitespace();
-
-        let mut tokens = Vec::<Token>::new();
-        let mut errors = Vec::<Error>::new();
-        let mut cur_token = String::new();
-
-        Err(vec![])
     }
 }
 

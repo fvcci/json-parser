@@ -313,9 +313,7 @@ impl<'a> Parser<'a> {
             ));
             None
         } else {
-            Some(Value::String(
-                possible_string[1..possible_string.len() - 1].to_string(),
-            ))
+            Some(possible_string[1..possible_string.len() - 1].to_string())
         };
 
         self.tokens = &self.tokens[1..];
