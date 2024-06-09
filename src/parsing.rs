@@ -16,7 +16,6 @@ pub enum Value {
 }
 
 pub struct Parser<'a> {
-    tokens: &'a [lexical::Token],
     reader: lexical::Reader<'a>,
     errors: Vec<Error>,
 }
@@ -24,7 +23,6 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn parse(json: &'a str) -> Result<Value, Vec<Error>> {
         let mut parser = Parser {
-            tokens: &lexical::Token::try_from_json(json)?,
             reader: lexical::Reader::new(json),
             errors: Vec::<Error>::new(),
         };
@@ -112,7 +110,7 @@ impl<'a> Parser<'a> {
     fn parse_array_elements(&mut self) -> Option<Vec<Value>> {
         const END_OF_ELEMENTS: char = ']';
 
-        if self.tokens.is_empty() {
+        if self.reader.peek(1).is_empty() {
             self.reader
                 .create_error(ErrorCode::EndOfFileWhileParsing(END_OF_ELEMENTS));
             return None;
@@ -136,21 +134,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_object(&mut self) -> Option<Value> {
-        match self.tokens {
-            [lexical::Token::Punctuation('{')] => {
-                self.tokens = &[];
+        match self.reader.peek(2).as_slice() {
+            [Err(error), ..] => {
+                self.errors.push(*error);
+                self.reader.next(1);
+                None
+            }
+            [Ok(lexical::Token::Punctuation('{'))] => {
+                self.reader.next(1);
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing('}')),
                 );
                 None
             }
-            [lexical::Token::Punctuation('{'), lexical::Token::Punctuation('}'), ..] => {
-                self.tokens = &self.tokens[2..];
+            [Ok(lexical::Token::Punctuation('{')), Ok(lexical::Token::Punctuation('}')), ..] => {
+                self.reader.next(2);
                 Some(Value::Object(HashMap::new()))
             }
-            [lexical::Token::Punctuation('{'), ..] => {
-                self.tokens = &self.tokens[1..];
+            [Ok(lexical::Token::Punctuation('{')), ..] => {
+                self.reader.next(1);
                 self.parse_object_members().map(Value::Object)
             }
             _ => {
@@ -162,7 +165,7 @@ impl<'a> Parser<'a> {
     fn parse_object_members(&mut self) -> Option<HashMap<String, Value>> {
         const END_OF_MEMBERS: char = '}';
 
-        if self.tokens.is_empty() {
+        if self.reader.peek(1).is_empty() {
             self.errors.push(
                 self.reader
                     .create_error(ErrorCode::EndOfFileWhileParsing(END_OF_MEMBERS)),
@@ -173,9 +176,13 @@ impl<'a> Parser<'a> {
         let mut members = HashMap::<String, Value>::new();
 
         loop {
-            match self.tokens {
-                [lexical::Token::String(s), lexical::Token::Punctuation(':'), ..] => {
-                    self.tokens = &self.tokens[2..];
+            match self.reader.peek(2).as_slice() {
+                [Err(error), ..] => {
+                    self.errors.push(*error);
+                    self.reader.next(1);
+                }
+                [Ok(lexical::Token::String(s)), Ok(lexical::Token::Punctuation(':')), ..] => {
+                    self.reader.next(2);
                     match self.parse_string(&s) {
                         Some(Value::String(key)) => {
                             if let Some(value) = self.parse_value() {
@@ -190,27 +197,27 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
-                [c, lexical::Token::Punctuation(':'), ..] => {
+                [_, Ok(lexical::Token::Punctuation(':')), ..] => {
                     self.errors
                         .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
-                    self.tokens = &self.tokens[2..];
+                    self.reader.next(2);
                     self.parse_value();
                 }
-                [lexical::Token::Punctuation(':'), ..] => {
+                [Ok(lexical::Token::Punctuation(':')), ..] => {
                     self.errors
                         .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
-                    self.tokens = &self.tokens[1..];
+                    self.reader.next(1);
                     self.parse_value();
                 }
-                [lexical::Token::String(s), ..] => {
+                [Ok(lexical::Token::String(s)), ..] => {
                     self.errors
                         .push(self.reader.create_error(ErrorCode::ExpectedColon));
-                    self.tokens = &self.tokens[1..];
+                    self.reader.next(1);
                 }
-                [token, ..] => {
+                [_, ..] => {
                     self.errors
                         .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
-                    self.tokens = &self.tokens[1..];
+                    self.reader.next(1);
                 }
                 [] => {
                     panic!("Shouldn't be able to get an empty list");
@@ -238,7 +245,7 @@ impl<'a> Parser<'a> {
                 None
             }
         };
-        self.tokens = &self.tokens[1..];
+        self.reader.next(1);
         ret
     }
 
@@ -274,39 +281,41 @@ impl<'a> Parser<'a> {
             ))
         };
 
-        self.tokens = &self.tokens[1..];
+        self.reader.next(1);
 
         ret
     }
 
     fn parse_sequence_separator(&mut self, end: char) -> bool {
-        match self.tokens {
-            c @ ([] | [lexical::Token::Punctuation(',')]) => {
-                self.tokens = &[];
+        match self.reader.peek(2).as_slice() {
+            [Err(error), ..] => {
+                self.errors.push(*error);
+                self.reader.next(1);
+                false
+            }
+            c @ ([] | [Ok(lexical::Token::Punctuation(','))]) => {
+                self.reader.next(1);
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing(end)),
                 );
                 true
             }
-            [lexical::Token::Punctuation(','), lexical::Token::Punctuation(possible_end), ..]
+            [Ok(lexical::Token::Punctuation(',')), Ok(lexical::Token::Punctuation(possible_end)), ..]
                 if *possible_end == end =>
             {
-                self.tokens = &self.tokens[2..];
+                self.reader.next(2);
                 self.errors
                     .push(self.reader.create_error(ErrorCode::ExpectedToken));
                 true
             }
-            [lexical::Token::Punctuation(','), ..] => {
-                self.tokens = &self.tokens[1..];
+            [Ok(lexical::Token::Punctuation(',')), ..] => {
+                self.reader.next(1);
                 false
             }
-            [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
-                self.tokens = &self.tokens[1..];
+            [Ok(lexical::Token::Punctuation(possible_end)), ..] if *possible_end == end => {
+                self.reader.next(1);
                 true
-            }
-            [lexical::Token::NewLine, ..] => {
-                panic!("Shouldn't be possible to encounter");
             }
             [token, ..] => {
                 self.errors.push(
@@ -321,19 +330,19 @@ impl<'a> Parser<'a> {
     fn parse_until_comma_or_end(&mut self, end: char) {
         let mut seen_non_comma_value = false;
         loop {
-            match self.tokens {
-                [] | [lexical::Token::Punctuation(','), ..] => {
+            match self.reader.peek(1).as_slice() {
+                [] | [Ok(lexical::Token::Punctuation(',')), ..] => {
                     break;
                 }
-                [lexical::Token::Punctuation(possible_end), ..] if *possible_end == end => {
+                [Ok(lexical::Token::Punctuation(possible_end)), ..] if *possible_end == end => {
                     break;
                 }
-                [lexical::Token::Punctuation(':'), ..] => {
-                    self.tokens = &self.tokens[1..];
+                [Ok(lexical::Token::Punctuation(':')), ..] => {
+                    self.reader.next(1);
                     self.parse_value();
                 }
                 [c, ..] => {
-                    self.tokens = &self.tokens[1..];
+                    self.reader.next(1);
                     seen_non_comma_value = true;
                 }
             }
