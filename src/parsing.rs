@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
                 '[' => self.parse_array(),
                 ',' | '}' | ']' | '|' => {
                     self.errors
-                        .push(self.reader.create_error(ErrorCode::ExpectedToken));
+                        .push(self.reader.create_error_next(ErrorCode::ExpectedToken));
                     None
                 }
                 a => panic!("{a} is not a valid punctuation in JSON"),
@@ -189,9 +189,9 @@ impl<'a> Parser<'a> {
                     self.reader.next(1);
                 }
                 [Ok(lexical::Token::String(s)), Ok(lexical::Token::Punctuation(':')), ..] => {
-                    self.reader.next(2);
                     match self.parse_string(&s) {
                         Some(Value::String(key)) => {
+                            self.reader.next(1);
                             if let Some(value) = self.parse_value() {
                                 members.insert(key, value);
                             }
@@ -200,26 +200,28 @@ impl<'a> Parser<'a> {
                             panic!("Shouldn't be possible");
                         }
                         None => {
+                            self.reader.next(1);
                             self.parse_value();
                         }
                     }
                 }
                 [_, Ok(lexical::Token::Punctuation(':')), ..] => {
+                    self.reader.next(1);
                     self.errors
                         .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
-                    self.reader.next(2);
+                    self.reader.next(1);
                     self.parse_value();
                 }
                 [Ok(lexical::Token::Punctuation(':')), ..] => {
+                    self.reader.next(1);
                     self.errors
                         .push(self.reader.create_error(ErrorCode::KeyMustBeAString));
-                    self.reader.next(1);
                     self.parse_value();
                 }
                 [Ok(lexical::Token::String(_)), ..] => {
+                    self.reader.next(1);
                     self.errors
                         .push(self.reader.create_error(ErrorCode::ExpectedColon));
-                    self.reader.next(1);
                 }
                 [_, ..] => {
                     self.errors
@@ -278,7 +280,9 @@ impl<'a> Parser<'a> {
         assert!(first == '"');
 
         let last = possible_string.chars().last().unwrap();
+        self.reader.next(1);
         let ret = if possible_string.len() == 1 || num_quotations != 2 || last != '"' {
+            println!("{possible_string}");
             self.errors
                 .push(self.reader.create_error(ErrorCode::ExpectedDoubleQuote));
             None
@@ -287,8 +291,6 @@ impl<'a> Parser<'a> {
                 possible_string[1..possible_string.len() - 1].to_string(),
             ))
         };
-
-        self.reader.next(1);
 
         ret
     }
@@ -301,20 +303,19 @@ impl<'a> Parser<'a> {
                 false
             }
             [] | [Ok(lexical::Token::Punctuation(','))] => {
+                self.reader.next(1);
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing(end)),
                 );
-                self.reader.next(1);
                 true
             }
             [Ok(lexical::Token::Punctuation(',')), Ok(lexical::Token::Punctuation(possible_end)), ..]
                 if *possible_end == end =>
             {
-                self.reader.next(1);
+                self.reader.next(2);
                 self.errors
                     .push(self.reader.create_error(ErrorCode::ExpectedToken));
-                self.reader.next(1);
                 true
             }
             [Ok(lexical::Token::Punctuation(',')), ..] => {
@@ -360,7 +361,7 @@ impl<'a> Parser<'a> {
         if seen_non_comma_value {
             self.errors.push(
                 self.reader
-                    .create_error(ErrorCode::ExpectedCommaOrEndWhileParsing(end)),
+                    .create_error_next(ErrorCode::ExpectedCommaOrEndWhileParsing(end)),
             );
         }
     }
@@ -436,7 +437,7 @@ mod tests {
             Err(vec![Error::new(
                 ErrorCode::EndOfFileWhileParsing(']'),
                 1,
-                6
+                2
             ),]),
             Parser::parse("[true")
         );
@@ -457,7 +458,7 @@ mod tests {
     #[test]
     fn fail_more_than_one_json_value() {
         assert_eq!(
-            Err(vec![Error::new(ErrorCode::EndOfFileExpected, 1, 5)]),
+            Err(vec![Error::new(ErrorCode::EndOfFileExpected, 1, 6)]),
             Parser::parse("null null")
         )
     }

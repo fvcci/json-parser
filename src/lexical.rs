@@ -93,18 +93,22 @@ impl Token {
 
 pub struct Reader<'a> {
     chars: Peekable<Chars<'a>>,
-    buffer: Vec<Result<Token, Error>>,
+    buffer: Vec<(usize, usize, Result<Token, Error>)>,
     line: usize,
     col: usize,
+    msg_line: usize,
+    msg_col: usize,
 }
 
 impl<'a> Reader<'a> {
     pub fn new(possible_json: &'a str) -> Reader<'a> {
         Reader {
             chars: possible_json.chars().peekable(),
-            buffer: Vec::<Result<Token, Error>>::new(),
+            buffer: Vec::<(usize, usize, Result<Token, Error>)>::new(),
             line: 1,
             col: 1,
+            msg_line: 1,
+            msg_col: 1,
         }
     }
 
@@ -112,12 +116,29 @@ impl<'a> Reader<'a> {
         self.read_in(num_tokens);
         self.buffer
             .drain(..min(self.buffer.len(), num_tokens))
+            .map(|(line, col, token)| {
+                self.msg_line = line;
+                self.msg_col = col;
+                token
+            })
             .collect()
     }
 
     pub fn peek(&mut self, num_tokens: usize) -> Vec<Result<Token, Error>> {
         self.read_in(num_tokens);
-        self.buffer[..min(self.buffer.len(), num_tokens)].to_vec()
+        self.buffer[..min(self.buffer.len(), num_tokens)]
+            .iter()
+            .map(|(_, _, token)| token.clone())
+            .collect()
+    }
+
+    fn peek_line_and_col(&mut self) -> Option<(usize, usize)> {
+        self.read_in(1);
+        if self.buffer.is_empty() {
+            return None;
+        }
+        let (line, col, _) = self.buffer[0];
+        Some((line, col))
     }
 
     fn read_in(&mut self, num_tokens: usize) {
@@ -134,25 +155,43 @@ impl<'a> Reader<'a> {
                     is_in_quotes = !is_in_quotes;
                     cur_token.push('"');
                 }
+                '\\' if is_in_quotes => {
+                    cur_token.push('\\');
+                    if let Some(c) = self.chars.next() {
+                        cur_token.push(c);
+                    }
+                }
                 c @ (',' | ':' | '{' | '}' | '[' | ']') if !is_in_quotes => {
                     if cur_token.is_empty() {
-                        self.buffer.push(Ok(Token::Punctuation(c)));
+                        self.buffer
+                            .push(self.create_token(Ok(Token::Punctuation(c)), 0));
                     } else {
                         self.buffer.push(
-                            Token::try_from_token(&cur_token)
-                                .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                            self.create_token(
+                                Token::try_from_token(&cur_token)
+                                    .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                                cur_token.len(),
+                            ),
                         );
                         cur_token.clear();
-                        self.buffer.push(Ok(Token::Punctuation(c)));
+                        self.buffer
+                            .push(self.create_token(Ok(Token::Punctuation(c)), 0));
                     }
                 }
                 c if !is_in_quotes && c.is_whitespace() => {
                     if !cur_token.is_empty() {
                         self.buffer.push(
-                            Token::try_from_token(&cur_token)
-                                .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                            self.create_token(
+                                Token::try_from_token(&cur_token)
+                                    .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                                cur_token.len(),
+                            ),
                         );
                         cur_token.clear();
+                    }
+                    if c == '\n' || c == '\r' {
+                        self.line += 1;
+                        self.col = 0;
                     }
                     self.read_whitespace();
                 }
@@ -176,14 +215,33 @@ impl<'a> Reader<'a> {
                 cur_token
             );
             self.buffer.push(
-                Token::try_from_token(&cur_token)
-                    .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                self.create_token(
+                    Token::try_from_token(&cur_token)
+                        .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                    cur_token.len(),
+                ),
             );
         }
     }
 
+    fn create_token(
+        &self,
+        res: Result<Token, Error>,
+        token_len: usize,
+    ) -> (usize, usize, Result<Token, Error>) {
+        (self.line, self.col - token_len, res)
+    }
+
     pub fn create_error(&self, code: ErrorCode) -> Error {
-        Error::new(code, self.line, self.col)
+        Error::new(code, self.msg_line, self.msg_col)
+    }
+
+    pub fn create_error_next(&mut self, code: ErrorCode) -> Error {
+        if let Some((line, col)) = self.peek_line_and_col() {
+            Error::new(code, line, col)
+        } else {
+            self.create_error(code)
+        }
     }
 
     fn read_whitespace(&mut self) {
@@ -326,8 +384,13 @@ mod tests {
             let mut reader = Reader::new(r#"[,,]"#);
             assert_eq!(vec![Ok(Token::Punctuation('[')),], reader.peek(1));
             assert_eq!(vec![Ok(Token::Punctuation('[')),], reader.next(1));
+            assert_eq!(1, reader.msg_col);
+            assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.peek(1));
             assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.next(1));
+            assert_eq!(2, reader.msg_col);
+            assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.peek(1));
             assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.next(1));
+            assert_eq!(3, reader.msg_col);
             assert_eq!(vec![Ok(Token::Punctuation(']')),], reader.next(1));
         }
     }
