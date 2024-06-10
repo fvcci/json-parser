@@ -137,42 +137,43 @@ impl<'a> Reader<'a> {
                 c @ (',' | ':' | '{' | '}' | '[' | ']') if !is_in_quotes => {
                     if cur_token.is_empty() {
                         self.buffer.push(Ok(Token::Punctuation(c)));
-                        continue;
+                    } else {
+                        self.buffer.push(
+                            Token::try_from_token(&cur_token)
+                                .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                        );
+                        cur_token.clear();
+                        self.buffer.push(Ok(Token::Punctuation(c)));
                     }
-
-                    self.buffer.push(
-                        Token::try_from_token(&cur_token)
-                            .ok_or(self.create_error(ErrorCode::ExpectedToken)),
-                    );
-                    cur_token.clear();
-                    self.buffer.push(Ok(Token::Punctuation(c)));
                 }
                 c if !is_in_quotes && c.is_whitespace() => {
-                    self.read_whitespace();
-                    if cur_token.is_empty() {
-                        continue;
+                    if !cur_token.is_empty() {
+                        self.buffer.push(
+                            Token::try_from_token(&cur_token)
+                                .ok_or(self.create_error(ErrorCode::ExpectedToken)),
+                        );
+                        cur_token.clear();
                     }
-                    self.buffer.push(
-                        Token::try_from_token(&cur_token)
-                            .ok_or(self.create_error(ErrorCode::ExpectedToken)),
-                    );
-                    cur_token.clear();
+                    self.read_whitespace();
                 }
                 c => {
                     cur_token.push(c);
                 }
             }
+            self.col += 1;
 
-            if self.buffer.len() == num_tokens {
+            if self.buffer.len() >= num_tokens {
                 break;
             }
         }
 
-        assert!(self.buffer.len() <= num_tokens);
+        assert!(self.buffer.is_empty() || self.buffer.len() - 1 <= num_tokens);
         if !cur_token.is_empty() {
             assert!(
                 self.buffer.len() < num_tokens,
-                "All required tokens must not have been parsed"
+                "All required tokens must not have been parsed. Found {:?} {:?}",
+                self.buffer,
+                cur_token
             );
             self.buffer.push(
                 Token::try_from_token(&cur_token)
@@ -312,13 +313,22 @@ mod tests {
 
         #[test]
         fn pass_single_token() {
-            let json = r#""}, \n ""#;
-            let mut reader = Reader::new(json);
+            let mut reader = Reader::new(r#""}, \n ""#);
 
             assert_eq!(
                 vec![Ok(Token::String(r#""}, \n ""#.to_string()))],
                 reader.next(1)
             );
+        }
+
+        #[test]
+        fn pass_invalid_json() {
+            let mut reader = Reader::new(r#"[,,]"#);
+            assert_eq!(vec![Ok(Token::Punctuation('[')),], reader.peek(1));
+            assert_eq!(vec![Ok(Token::Punctuation('[')),], reader.next(1));
+            assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.next(1));
+            assert_eq!(vec![Ok(Token::Punctuation(',')),], reader.next(1));
+            assert_eq!(vec![Ok(Token::Punctuation(']')),], reader.next(1));
         }
     }
 

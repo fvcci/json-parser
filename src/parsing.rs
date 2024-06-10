@@ -46,7 +46,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> Option<Value> {
-        match self.reader.next(1).as_slice() {
+        match self.reader.peek(1).as_slice() {
             [] => {
                 self.errors.push(
                     self.reader
@@ -56,10 +56,17 @@ impl<'a> Parser<'a> {
             }
             [Err(error), ..] => {
                 self.errors.push(*error);
+                self.reader.next(1);
                 None
             }
-            [Ok(lexical::Token::Null), ..] => Some(Value::Null),
-            [Ok(lexical::Token::Bool(val)), ..] => Some(Value::Bool(val.parse().unwrap())),
+            [Ok(lexical::Token::Null), ..] => {
+                self.reader.next(1);
+                Some(Value::Null)
+            }
+            [Ok(lexical::Token::Bool(val)), ..] => {
+                self.reader.next(1);
+                Some(Value::Bool(val.parse().unwrap()))
+            }
             [Ok(lexical::Token::String(val)), ..] => self.parse_string(&val),
             [Ok(lexical::Token::Number(val)), ..] => self.parse_number(&val),
             [Ok(lexical::Token::Punctuation(c)), ..] => match *c {
@@ -86,11 +93,11 @@ impl<'a> Parser<'a> {
                 None
             }
             [Ok(lexical::Token::Punctuation('['))] => {
-                self.reader.next(1);
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing(']')),
                 );
+                self.reader.next(1);
                 None
             }
             [Ok(lexical::Token::Punctuation('[')), Ok(lexical::Token::Punctuation(']')), ..] => {
@@ -101,8 +108,8 @@ impl<'a> Parser<'a> {
                 self.reader.next(1);
                 self.parse_array_elements().map(Value::Array)
             }
-            _ => {
-                panic!("Arrays must start with '['");
+            a => {
+                panic!("Arrays must start with '['. Found {a:?}");
             }
         }
     }
@@ -141,11 +148,11 @@ impl<'a> Parser<'a> {
                 None
             }
             [Ok(lexical::Token::Punctuation('{'))] => {
-                self.reader.next(1);
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing('}')),
                 );
+                self.reader.next(1);
                 None
             }
             [Ok(lexical::Token::Punctuation('{')), Ok(lexical::Token::Punctuation('}')), ..] => {
@@ -209,7 +216,7 @@ impl<'a> Parser<'a> {
                     self.reader.next(1);
                     self.parse_value();
                 }
-                [Ok(lexical::Token::String(s)), ..] => {
+                [Ok(lexical::Token::String(_)), ..] => {
                     self.errors
                         .push(self.reader.create_error(ErrorCode::ExpectedColon));
                     self.reader.next(1);
@@ -293,20 +300,21 @@ impl<'a> Parser<'a> {
                 self.reader.next(1);
                 false
             }
-            c @ ([] | [Ok(lexical::Token::Punctuation(','))]) => {
-                self.reader.next(1);
+            [] | [Ok(lexical::Token::Punctuation(','))] => {
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing(end)),
                 );
+                self.reader.next(1);
                 true
             }
             [Ok(lexical::Token::Punctuation(',')), Ok(lexical::Token::Punctuation(possible_end)), ..]
                 if *possible_end == end =>
             {
-                self.reader.next(2);
+                self.reader.next(1);
                 self.errors
                     .push(self.reader.create_error(ErrorCode::ExpectedToken));
+                self.reader.next(1);
                 true
             }
             [Ok(lexical::Token::Punctuation(',')), ..] => {
@@ -317,11 +325,12 @@ impl<'a> Parser<'a> {
                 self.reader.next(1);
                 true
             }
-            [token, ..] => {
+            [_, ..] => {
                 self.errors.push(
                     self.reader
                         .create_error(ErrorCode::EndOfFileWhileParsing(end)),
                 );
+                self.reader.next(1);
                 false
             }
         }
@@ -341,7 +350,7 @@ impl<'a> Parser<'a> {
                     self.reader.next(1);
                     self.parse_value();
                 }
-                [c, ..] => {
+                [_, ..] => {
                     self.reader.next(1);
                     seen_non_comma_value = true;
                 }
